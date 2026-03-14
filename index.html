@@ -1394,8 +1394,42 @@ function Statistics({ plays, games, campaigns }) {
         </table>
       </div>
 
-      {/* Champions leaderboard */}
-      {topPlayers.length>0&&<>
+      {/* Encounter stats table */}
+      {(() => {
+        // Build encounter stats from all plays that have a scenario name
+        const encMap = {};
+        plays.filter(p=>p._scenarioName||p.scenario).forEach(p => {
+          const name = p._scenarioName||p.scenario;
+          const game = games.find(g=>g.id===p.gameId)?.name||'Unknown';
+          const key = name;
+          if(!encMap[key]) encMap[key]={name,game,attempts:0,wins:0,losses:0};
+          encMap[key].attempts++;
+          if(p.result==='win'||p.result==='cooperative-win') encMap[key].wins++;
+          if(p.result==='loss'||p.result==='cooperative-loss') encMap[key].losses++;
+        });
+        const encounters = Object.values(encMap).sort((a,b)=>b.attempts-a.attempts);
+        if(!encounters.length) return null;
+        return <>
+          <div className="section-label">Encounters &amp; Scenarios</div>
+          <div className="overflow-x-auto mb-4">
+            <table className="stats-table">
+              <thead><tr><th>Encounter</th><th>Game</th><th>Plays</th><th>Won</th><th>Lost</th><th>Win %</th></tr></thead>
+              <tbody>
+                {encounters.map(e=>(
+                  <tr key={e.name}>
+                    <td style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'0.95rem"'}}>{e.name}</td>
+                    <td>{e.game}</td>
+                    <td>{e.attempts}</td>
+                    <td style={{color:'var(--green)'}}>{e.wins}</td>
+                    <td style={{color:'var(--red)'}}>{e.losses}</td>
+                    <td>{e.attempts>0?Math.round(e.wins/e.attempts*100)+'%':'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>;
+      })()}
         <div className="section-label">Champions</div>
         <div style={{marginBottom:'1.5rem'}}>
           {topPlayers.map(([name,w])=>(
@@ -1418,18 +1452,22 @@ function PlayCard({ play, games, campaigns, onDelete }) {
   const RC={win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
   const RL={win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Defeat',draw:'Draw'};
   const hasScores = play.scores && play.scoreColumns?.length > 0;
+  const scenarioName = play._scenarioName || play.scenario;
+  const campaignName = play._campaignName || campaign?.name;
   return (
     <div className="card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <Badge color={RC[play.result]||'gray'}>{RL[play.result]||play.result}</Badge>
-            {g.type==='campaign'&&<Badge color="purple">Campaign</Badge>}
+            {(play._source==='campaign'||play._fromCampaign)&&<Badge color="purple">Campaign</Badge>}
             <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',fontWeight:400,color:'var(--text)'}}>{g.name}</span>
           </div>
           <div style={{fontSize:10,color:'var(--text-faint)',letterSpacing:'0.08em'}}>
-            {play.date}{play.scenario?' · '+play.scenario:''}{play.duration?' · '+play.duration+' min':''}
-            {campaign&&<span style={{color:'var(--gold-dim)'}}> · {campaign.name}</span>}
+            {play.date}
+            {scenarioName&&<span style={{color:'var(--gold-dim)'}}> · {scenarioName}</span>}
+            {campaignName&&<span> · {campaignName}</span>}
+            {play.duration&&<span> · {play.duration} min</span>}
           </div>
           {play.players&&<div className="flex gap-1 flex-wrap mt-1">
             {play.players.split(',').map((p,i)=>(
@@ -1438,8 +1476,6 @@ function PlayCard({ play, games, campaigns, onDelete }) {
               </span>
             ))}
           </div>}
-
-          {/* Score sheet summary */}
           {hasScores && (
             <div style={{marginTop:'0.625rem',display:'flex',flexWrap:'wrap',gap:'0.5rem'}}>
               {play.scoreColumns.map(col=>(
@@ -1456,7 +1492,6 @@ function PlayCard({ play, games, campaigns, onDelete }) {
               )}
             </div>
           )}
-
           {play.notes&&<div style={{fontSize:11,color:'var(--text-faint)',marginTop:4,fontStyle:'italic'}}>{play.notes}</div>}
         </div>
         {onDelete&&<Btn size="sm" variant="danger" onClick={onDelete}>Remove</Btn>}
@@ -1638,10 +1673,30 @@ function App() {
   const update = useCallback(next=>{ setData(next); saveData(next); },[]);
   const { games, plays, campaigns } = data;
 
+  // ── Helper: flatten ALL plays including campaign scenario plays ──────────
+  // Returns unified play objects with _source, _campaignId, _scenarioName
+  const allPlays = [
+    ...plays,
+    ...campaigns.flatMap(c =>
+      (c.scenarios||[]).flatMap(sc =>
+        (sc.plays||[]).map(p => ({
+          ...p,
+          _source: 'campaign',
+          _campaignId: c.id,
+          _campaignName: c.name,
+          _scenarioName: sc.name,
+          // Use campaign's gameId if play doesn't have one
+          gameId: p.gameId || c.gameId,
+        }))
+      )
+    )
+  ];
+
   const addGame = g => update({...data,games:[...games,g]});
+
   const addPlay = p => {
+    // Also sync to campaign if linked
     let updatedCampaigns = campaigns;
-    // If linked to a campaign and has a scenario name, add/update that scenario's score
     if (p.campaignId && p.scenario) {
       updatedCampaigns = campaigns.map(c => {
         if (c.id !== p.campaignId) return c;
@@ -1649,35 +1704,80 @@ function App() {
         const scEntry = {
           id: existing >= 0 ? c.scenarios[existing].id : uid(),
           name: p.scenario,
-          result: p.result === 'win' || p.result === 'cooperative-win' ? 'win' : p.result === 'loss' || p.result === 'cooperative-loss' ? 'loss' : '',
-          date: p.date,
-          notes: p.notes || '',
-          completed: p.result === 'win' || p.result === 'cooperative-win' || p.result === 'loss' || p.result === 'cooperative-loss',
-          scores: p.scores || null,
-          scoreColumns: p.scoreColumns || null,
-          playId: p.id,
+          result: p.result === 'win' || p.result === 'cooperative-win' ? 'win' : 'loss',
+          date: p.date, notes: p.notes||'',
+          completed: p.result==='win'||p.result==='cooperative-win'||p.result==='loss'||p.result==='cooperative-loss',
+          scores: p.scores||null, scoreColumns: p.scoreColumns||null, playId: p.id,
         };
         const newScenarios = existing >= 0
-          ? c.scenarios.map((s,i) => i === existing ? scEntry : s)
+          ? c.scenarios.map((s,i) => i===existing ? scEntry : s)
           : [...(c.scenarios||[]), scEntry];
         return {...c, scenarios: newScenarios};
       });
     }
     update({...data, plays:[...plays,p], campaigns: updatedCampaigns});
   };
+
+  // When a campaign scenario play is added from CampaignDetail,
+  // also push it into the top-level plays array so play log is complete
+  const addCampaignPlay = (campaignId, scenarioName, play, gameId) => {
+    const playEntry = {
+      ...play,
+      id: play.id || uid(),
+      gameId: gameId,
+      scenario: scenarioName,
+      campaignId: campaignId,
+      _fromCampaign: true,
+    };
+    // Update both: push to plays[], and update campaign scenario
+    const updatedCampaigns = campaigns.map(c => {
+      if (c.id !== campaignId) return c;
+      const newScenarios = (c.scenarios||[]).map(sc => {
+        if (sc.name !== scenarioName) return sc;
+        return {...sc, plays: [...(sc.plays||[]), play]};
+      });
+      return {...c, scenarios: newScenarios};
+    });
+    update({...data, plays:[...plays, playEntry], campaigns: updatedCampaigns});
+  };
+
   const addCampaign = c => update({...data,campaigns:[...campaigns,c]});
-  const deletePlay = id => update({...data,plays:plays.filter(p=>p.id!==id)});
+  const deletePlay = id => {
+    // Remove from top-level plays AND from any campaign scenario plays
+    const updatedCampaigns = campaigns.map(c => ({
+      ...c,
+      scenarios: (c.scenarios||[]).map(sc => ({
+        ...sc,
+        plays: (sc.plays||[]).filter(p => p.id !== id)
+      }))
+    }));
+    update({...data, plays:plays.filter(p=>p.id!==id), campaigns: updatedCampaigns});
+  };
   const deleteGame = id => update({...data,games:games.filter(g=>g.id!==id)});
   const deleteCampaign = id => update({...data,campaigns:campaigns.filter(c=>c.id!==id)});
-  const updateCampaign = c => update({...data,campaigns:campaigns.map(x=>x.id===c.id?c:x)});
+  const updateCampaign = (c, extraPlay) => {
+    // If a new scenario play was added, also log it to top-level plays
+    if (extraPlay) {
+      update({
+        ...data,
+        plays: [...plays, extraPlay],
+        campaigns: campaigns.map(x=>x.id===c.id?c:x)
+      });
+    } else {
+      update({...data,campaigns:campaigns.map(x=>x.id===c.id?c:x)});
+    }
+  };
 
   const TABS = ['dashboard','plays','campaigns','games','stats'];
   const LABELS = {dashboard:'Dashboard',plays:'Play Log',campaigns:'Campaigns',games:'Library',stats:'Statistics'};
 
-  const wins = plays.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
-  const totalMins = plays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
-  const recentPlays = [...plays].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
-  const filteredPlays = playFilter==='all'?plays:plays.filter(p=>games.find(g=>g.id===p.gameId)?.name===playFilter);
+  // Dashboard stats use allPlays
+  const allWins = allPlays.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
+  const allTotalMins = allPlays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+  const recentPlays = [...allPlays].filter(p=>p.date).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  const filteredPlays = playFilter==='all'
+    ? allPlays
+    : allPlays.filter(p=>games.find(g=>g.id===p.gameId)?.name===playFilter);
 
   if(activeCampaign) {
     const c = campaigns.find(x=>x.id===activeCampaign);
@@ -1707,9 +1807,9 @@ function App() {
 
       {tab==='dashboard'&&<div className="fade-in">
         <div className="stat-grid">
-          <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{plays.length}</div></div>
-          <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(totalMins/60).toFixed(1)}</div></div>
-          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{plays.length?Math.round(wins/plays.length*100)+'%':'—'}</div></div>
+          <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{allPlays.length}</div><div className="stat-sub">{plays.length} standalone · {allPlays.length-plays.length} campaign</div></div>
+          <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(allTotalMins/60).toFixed(1)}</div></div>
+          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{allPlays.length?Math.round(allWins/allPlays.length*100)+'%':'—'}</div></div>
           <div className="stat-card"><div className="stat-label">Active Quests</div><div className="stat-value">{campaigns.filter(c=>c.status==='active').length}</div></div>
         </div>
         <div className="section-header">
@@ -1727,11 +1827,11 @@ function App() {
           <Btn variant="primary" onClick={()=>setModal('play')}>+ Record Play</Btn>
         </div>
         <div className="filter-row">
-          {['all',...new Set(plays.map(p=>games.find(g=>g.id===p.gameId)?.name).filter(Boolean))].map(f=>(
+          {['all',...new Set(allPlays.map(p=>games.find(g=>g.id===p.gameId)?.name).filter(Boolean))].map(f=>(
             <button key={f} className={`filter-pill ${playFilter===f?'active':''}`} onClick={()=>setPlayFilter(f)}>{f==='all'?'All Games':f}</button>
           ))}
         </div>
-        {[...filteredPlays].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(p=><PlayCard key={p.id} play={p} games={games} campaigns={campaigns} onDelete={()=>deletePlay(p.id)}/>)}
+        {[...filteredPlays].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(p=><PlayCard key={p.id} play={p} games={games} campaigns={campaigns} onDelete={p._source!=='campaign'?()=>deletePlay(p.id):undefined}/>)}
         {!filteredPlays.length&&<div className="empty"><span className="empty-rune">◈</span>No plays logged yet</div>}
       </div>}
 
@@ -1743,7 +1843,7 @@ function App() {
         {!campaigns.length&&<div className="empty"><span className="empty-rune">◈</span>No campaigns yet — begin your epic</div>}
         {campaigns.map(c=>{
           const g=games.find(x=>x.id===c.gameId)||{name:'Unknown'};
-          const done=c.scenarios?.filter(s=>s.completed).length||0;
+          const done=c.scenarios?.filter(s=>s.completed||s.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length||0;
           const total=c.scenarios?.length||0;
           const pct=total?Math.round(done/total*100):0;
           const mods=c.modules||[];
@@ -1782,7 +1882,7 @@ function App() {
         </div>
         {!games.length&&<div className="empty"><span className="empty-rune">◈</span>Your library awaits</div>}
         {games.map(g=>{
-          const gp=plays.filter(p=>p.gameId===g.id);
+          const gp=allPlays.filter(p=>p.gameId===g.id);
           const gw=gp.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
           const gMins=gp.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
           return (
@@ -1810,7 +1910,7 @@ function App() {
         })}
       </div>}
 
-      {tab==='stats'&&<Statistics plays={plays} games={games} campaigns={campaigns}/>}
+      {tab==='stats'&&<Statistics plays={allPlays} games={games} campaigns={campaigns}/>}
 
       {modal==='play'&&<LogPlayModal games={games} campaigns={campaigns} onSave={addPlay} onClose={()=>setModal(null)}/>}
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
