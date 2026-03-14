@@ -1200,47 +1200,182 @@ function CampaignDetail({ campaign, games, onUpdate, onBack }) {
 
 // ── Statistics ───────────────────────────────────────────────────────────────
 function Statistics({ plays, games, campaigns }) {
-  if(!plays.length) return <div className="empty"><span className="empty-rune">◈</span>Log some plays to see your chronicles</div>;
-  const totalMins = plays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+  const hasAny = plays.length > 0 || campaigns.some(c=>(c.scenarios||[]).some(s=>(s.plays||[]).length>0));
+  if (!hasAny) return <div className="empty"><span className="empty-rune">◈</span>Log some plays to see your chronicles</div>;
+
+  // --- Collect ALL play durations: standalone plays + campaign scenario plays ---
+  // Flatten campaign scenario plays into a unified list for duration/time stats
+  const campaignPlays = campaigns.flatMap(c =>
+    (c.scenarios||[]).flatMap(sc =>
+      (sc.plays||[]).map(p => ({
+        ...p,
+        _source: 'campaign',
+        _campaignId: c.id,
+        _gameId: c.gameId,
+        _scenarioName: sc.name,
+      }))
+    )
+  );
+
+  // All plays combined (standalone + campaign) for time/hours stats
+  const allPlaysForTime = [...plays, ...campaignPlays];
+  const totalMins = allPlaysForTime.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+  const campaignMins = campaignPlays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+
+  // Standalone play stats
   const wins = plays.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
   const withDur = plays.filter(p=>p.duration);
-  const avgDur = withDur.length?Math.round(withDur.reduce((s,p)=>s+parseInt(p.duration),0)/withDur.length):0;
+  const avgDur = withDur.length ? Math.round(withDur.reduce((s,p)=>s+parseInt(p.duration),0)/withDur.length) : 0;
+
+  // Longest single session (across all plays including campaign)
+  const longestPlay = allPlaysForTime.reduce((best, p) => {
+    const d = parseInt(p.duration)||0;
+    if (d > (parseInt(best?.duration)||0)) return p;
+    return best;
+  }, null);
+  const longestGame = longestPlay?._gameId
+    ? games.find(g=>g.id===longestPlay._gameId)
+    : games.find(g=>g.id===longestPlay?.gameId);
+
+  // Most played game (by play count, standalone plays)
+  const gamePlayCounts = {};
+  plays.forEach(p=>{ gamePlayCounts[p.gameId]=(gamePlayCounts[p.gameId]||0)+1; });
+  const mostPlayedId = Object.entries(gamePlayCounts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const mostPlayedGame = games.find(g=>g.id===mostPlayedId);
+  const mostPlayedCount = gamePlayCounts[mostPlayedId]||0;
+
+  // Most played game by time (standalone + campaign)
+  const gameTimeMins = {};
+  allPlaysForTime.forEach(p=>{
+    const gid = p._gameId||p.gameId;
+    gameTimeMins[gid]=(gameTimeMins[gid]||0)+(parseInt(p.duration)||0);
+  });
+  const mostTimeId = Object.entries(gameTimeMins).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const mostTimeGame = games.find(g=>g.id===mostTimeId);
+  const mostTimeMins = gameTimeMins[mostTimeId]||0;
+
+  // Win streak (standalone plays sorted by date)
+  const sortedPlays = [...plays].filter(p=>p.date).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let streak=0, bestStreak=0, cur=0;
+  sortedPlays.forEach(p=>{
+    if(p.result==='win'||p.result==='cooperative-win'){cur++;if(cur>bestStreak)bestStreak=cur;}
+    else cur=0;
+  });
+  // Current streak (from end)
+  for(let i=sortedPlays.length-1;i>=0;i--){
+    const r=sortedPlays[i].result;
+    if(r==='win'||r==='cooperative-win') streak++; else break;
+  }
+
+  // Per-game stats (standalone plays only for win rate accuracy)
   const gameStats = games.map(g=>{
     const gp=plays.filter(p=>p.gameId===g.id);
     const gw=gp.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
-    const gMins=gp.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
-    return {...g,count:gp.length,wins:gw,winRate:gp.length?Math.round(gw/gp.length*100):0,hours:(gMins/60).toFixed(1)};
-  }).filter(g=>g.count>0).sort((a,b)=>b.count-a.count);
+    // Include campaign play time for this game
+    const standaloneMins=gp.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+    const campMins=(gameTimeMins[g.id]||0)-standaloneMins; // extra from campaigns
+    const totalGameMins=(gameTimeMins[g.id]||0);
+    return {...g,count:gp.length,wins:gw,
+      winRate:gp.length?Math.round(gw/gp.length*100):0,
+      hours:(totalGameMins/60).toFixed(1)};
+  }).filter(g=>g.count>0||(gameTimeMins[g.id]||0)>0).sort((a,b)=>b.count-a.count);
+
+  // Monthly activity
   const monthly={};
   plays.forEach(p=>{if(p.date){const m=p.date.slice(0,7);monthly[m]=(monthly[m]||0)+1;}});
+  campaignPlays.forEach(p=>{if(p.date){const m=p.date.slice(0,7);monthly[m]=(monthly[m]||0)+1;}});
   const monthKeys=Object.keys(monthly).sort().slice(-8);
   const maxM=Math.max(...monthKeys.map(k=>monthly[k]),1);
+  // Best month
+  const bestMonth=monthKeys.length?monthKeys.reduce((b,k)=>monthly[k]>monthly[b]?k:b,monthKeys[0]):null;
+
+  // Player win leaderboard
   const playerWins={};
   plays.forEach(p=>{if(p.winner)playerWins[p.winner.trim()]=(playerWins[p.winner.trim()]||0)+1;});
   const topPlayers=Object.entries(playerWins).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const scenariosDone=campaigns.reduce((s,c)=>s+(c.scenarios?.filter(x=>x.completed).length||0),0);
+
+  // Campaign stats
+  const scenariosDone=campaigns.reduce((s,c)=>{
+    const done=(c.scenarios||[]).filter(sc=>sc.completed||sc.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length;
+    return s+done;
+  },0);
+  const totalAttempts=campaigns.reduce((s,c)=>s+(c.scenarios||[]).reduce((ss,sc)=>ss+(sc.plays?.length||0),0),0);
+  const scenarioWinRate=totalAttempts>0?Math.round(scenariosDone/totalAttempts*100):0;
+
   return (
     <div className="fade-in">
+      {/* Top stat cards */}
       <div className="stat-grid">
-        <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{plays.length}</div></div>
-        <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(totalMins/60).toFixed(1)}</div>{avgDur&&<div className="stat-sub">~{avgDur} min avg</div>}</div>
-        <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{Math.round(wins/plays.length*100)}%</div><div className="stat-sub">{wins} of {plays.length}</div></div>
+        <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{plays.length}</div><div className="stat-sub">+{campaignPlays.length} campaign</div></div>
+        <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(totalMins/60).toFixed(1)}</div><div className="stat-sub">{avgDur?`~${avgDur}min avg`:campaignMins?(campaignMins/60).toFixed(1)+'h campaigns':''}</div></div>
+        <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{plays.length?Math.round(wins/plays.length*100)+'%':'—'}</div><div className="stat-sub">{wins} of {plays.length}</div></div>
         <div className="stat-card"><div className="stat-label">Unique Games</div><div className="stat-value">{new Set(plays.map(p=>p.gameId)).size}</div><div className="stat-sub">{games.length} in library</div></div>
-        <div className="stat-card"><div className="stat-label">Campaigns</div><div className="stat-value">{campaigns.filter(c=>c.status==='active').length}</div><div className="stat-sub">{campaigns.length} total</div></div>
-        <div className="stat-card"><div className="stat-label">Scenarios</div><div className="stat-value">{scenariosDone}</div><div className="stat-sub">cleared</div></div>
+        <div className="stat-card"><div className="stat-label">Active Campaigns</div><div className="stat-value">{campaigns.filter(c=>c.status==='active').length}</div><div className="stat-sub">{campaigns.length} total</div></div>
+        <div className="stat-card"><div className="stat-label">Scenarios Beaten</div><div className="stat-value">{scenariosDone}</div><div className="stat-sub">{totalAttempts} attempts</div></div>
       </div>
+
+      {/* Records row */}
+      <div className="section-label">Records & Highlights</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.625rem',marginBottom:'1.5rem'}}>
+        {mostPlayedGame&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Most Played</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{mostPlayedGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{mostPlayedCount} play{mostPlayedCount!==1?'s':''}</div>
+          </div>
+        )}
+        {mostTimeGame&&mostTimeMins>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Most Time Invested</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{mostTimeGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{(mostTimeMins/60).toFixed(1)}h total</div>
+          </div>
+        )}
+        {longestPlay&&longestGame&&parseInt(longestPlay.duration)>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Longest Session</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{longestGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{longestPlay.duration} min{longestPlay._scenarioName?` · ${longestPlay._scenarioName}`:longestPlay.scenario?` · ${longestPlay.scenario}`:''}</div>
+          </div>
+        )}
+        {bestStreak>1&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Best Win Streak</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',color:'var(--gold)',lineHeight:1,marginBottom:2}}>{bestStreak}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{streak>0?`current: ${streak}`:'streak ended'}</div>
+          </div>
+        )}
+        {bestMonth&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Best Month</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{new Date(bestMonth+'-01').toLocaleString('default',{month:'long',year:'numeric'})}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{monthly[bestMonth]} play{monthly[bestMonth]!==1?'s':''}</div>
+          </div>
+        )}
+        {totalAttempts>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Scenario Win Rate</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',color:'var(--gold)',lineHeight:1,marginBottom:2}}>{scenarioWinRate}%</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{scenariosDone} beaten of {totalAttempts} attempts</div>
+          </div>
+        )}
+      </div>
+
+      {/* Monthly activity chart */}
       {monthKeys.length>1&&<>
-        <div className="section-label">Activity</div>
+        <div className="section-label">Activity (last 8 months)</div>
         <div className="bar-chart mb-4">
           {monthKeys.map(k=>(
             <div key={k} className="bar-col">
               <div className="bar-count">{monthly[k]}</div>
-              <div className="bar-fill" style={{height:`${Math.max(4,(monthly[k]/maxM)*52)}px`,opacity:0.4+0.6*(monthly[k]/maxM)}}/>
+              <div className="bar-fill" style={{height:`${Math.max(4,(monthly[k]/maxM)*52)}px`,opacity:0.4+0.6*(monthly[k]/maxM),background:k===bestMonth?'var(--gold)':undefined}}/>
               <div className="bar-label">{k.slice(5)}/{k.slice(2,4)}</div>
             </div>
           ))}
         </div>
       </>}
+
+      {/* Per-game table */}
       <div className="section-label">By Game</div>
       <div className="overflow-x-auto mb-4">
         <table className="stats-table">
@@ -1248,16 +1383,21 @@ function Statistics({ plays, games, campaigns }) {
           <tbody>
             {gameStats.map(g=>(
               <tr key={g.id}>
-                <td>{g.name}</td><td>{g.count}</td><td>{g.hours}h</td><td>{g.winRate}%</td>
+                <td>{g.name}</td>
+                <td>{g.count}</td>
+                <td>{g.hours}h</td>
+                <td>{g.count>0?g.winRate+'%':'—'}</td>
                 <td><Badge color={g.type==='campaign'?'purple':g.type==='cooperative'?'blue':'gray'}>{g.type}</Badge></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Champions leaderboard */}
       {topPlayers.length>0&&<>
         <div className="section-label">Champions</div>
-        <div>
+        <div style={{marginBottom:'1.5rem'}}>
           {topPlayers.map(([name,w])=>(
             <div key={name} className="leaderboard-row">
               <span className="leaderboard-name">{name}</span>
