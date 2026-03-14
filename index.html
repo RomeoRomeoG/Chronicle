@@ -44,7 +44,7 @@ body {
   background: var(--ink);
   color: var(--text);
   font-family: 'DM Mono', monospace;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 300;
   min-height: 100vh;
   /* Subtle dot grid */
@@ -978,16 +978,28 @@ function AddModuleModal({ onAdd, onClose }) {
 // ── Campaign Detail ──────────────────────────────────────────────────────────
 function CampaignDetail({ campaign, games, onUpdate, onBack }) {
   const g = games.find(x=>x.id===campaign.gameId)||{name:'Unknown'};
+  const scoreCols = Array.isArray(g.scoreColumns) ? g.scoreColumns : [];
   const done = campaign.scenarios?.filter(s=>s.completed).length||0;
   const total = campaign.scenarios?.length||0;
   const pct = total?Math.round(done/total*100):0;
   const [showAddMod, setShowAddMod] = useState(false);
   const [addingSc, setAddingSc] = useState(false);
   const [scForm, setScForm] = useState({name:'',result:'',date:'',notes:''});
+  const [scScores, setScScores] = useState({});
   const updateMod = (id,u) => onUpdate({...campaign,modules:campaign.modules.map(m=>m.id===id?u:m)});
   const removeMod = id => onUpdate({...campaign,modules:campaign.modules.filter(m=>m.id!==id)});
   const addMod = m => onUpdate({...campaign,modules:[...(campaign.modules||[]),m]});
-  const addSc = () => { if(!scForm.name)return; onUpdate({...campaign,scenarios:[...(campaign.scenarios||[]),{id:uid(),...scForm,completed:!!scForm.result}]}); setScForm({name:'',result:'',date:'',notes:''}); setAddingSc(false); };
+  const addSc = () => {
+    if(!scForm.name) return;
+    const scoreData = scoreCols.length > 0 ? scoreCols.reduce((acc,col)=>({...acc,[col]:parseFloat(scScores[col])||0}),{}) : null;
+    onUpdate({...campaign, scenarios:[...(campaign.scenarios||[]),{
+      id:uid(), ...scForm, completed:!!scForm.result,
+      scores: scoreData, scoreColumns: scoreCols.length > 0 ? scoreCols : null
+    }]});
+    setScForm({name:'',result:'',date:'',notes:''});
+    setScScores({});
+    setAddingSc(false);
+  };
   const toggleSc = i => onUpdate({...campaign,scenarios:campaign.scenarios.map((s,si)=>si!==i?s:{...s,completed:!s.completed})});
   const removeSc = i => onUpdate({...campaign,scenarios:campaign.scenarios.filter((_,si)=>si!==i)});
 
@@ -1025,7 +1037,31 @@ function CampaignDetail({ campaign, games, onUpdate, onBack }) {
                 <Inp label="Date" type="date" value={scForm.date} onChange={e=>setScForm(f=>({...f,date:e.target.value}))}/>
                 <Inp label="Notes" value={scForm.notes} onChange={e=>setScForm(f=>({...f,notes:e.target.value}))} placeholder="Key moments…" className="col-span-2"/>
               </div>
-              <div className="flex gap-2"><Btn size="sm" variant="primary" onClick={addSc}>Add</Btn><Btn size="sm" onClick={()=>setAddingSc(false)}>Cancel</Btn></div>
+              {scoreCols.length > 0 && (
+                <div style={{marginBottom:'0.75rem'}}>
+                  <div style={{fontSize:9,letterSpacing:'0.2em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
+                    Encounter Scores
+                    <span style={{flex:1,height:1,background:'var(--border)',display:'block'}}/>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:'0.5rem'}}>
+                    {scoreCols.map(col=>(
+                      <div key={col} className="form-group">
+                        <label className="form-label">{col}</label>
+                        <input className="form-input" type="number" value={scScores[col]||''} onChange={e=>setScScores(s=>({...s,[col]:e.target.value}))} placeholder="0" style={{textAlign:'center'}}/>
+                      </div>
+                    ))}
+                  </div>
+                  {scoreCols.length > 1 && (
+                    <div style={{marginTop:'0.5rem',display:'flex',justifyContent:'flex-end',gap:'0.5rem',alignItems:'center'}}>
+                      <span style={{fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>Total</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)'}}>
+                        {scoreCols.reduce((s,col)=>s+(parseFloat(scScores[col])||0),0)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-2"><Btn size="sm" variant="primary" onClick={addSc}>Add</Btn><Btn size="sm" onClick={()=>{setAddingSc(false);setScScores({});}}>Cancel</Btn></div>
             </div>
           )}
           {!(campaign.scenarios||[]).length&&!addingSc&&<div style={{fontSize:11,color:'var(--text-faint)',padding:'0.25rem 0',letterSpacing:'0.05em'}}>No scenarios recorded yet</div>}
