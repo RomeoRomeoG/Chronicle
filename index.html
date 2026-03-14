@@ -975,33 +975,177 @@ function AddModuleModal({ onAdd, onClose }) {
   );
 }
 
+// ── Scenario Play Log Form ────────────────────────────────────────────────────
+function ScenarioPlayForm({ scoreCols, onSave, onCancel }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [f, setF] = useState({result:'loss',date:today,players:'',winner:'',duration:'',notes:''});
+  const [scores, setScores] = useState({});
+  const U = (k,v) => setF(p=>({...p,[k]:v}));
+  const RC = {win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
+  const RL = {win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Loss',draw:'Draw'};
+  const total = scoreCols.reduce((s,col)=>s+(parseFloat(scores[col])||0),0);
+  return (
+    <div style={{background:'var(--ink-4)',border:'1px solid var(--border-bright)',borderRadius:'var(--r)',padding:'1rem',marginTop:'0.5rem'}}>
+      <div className="form-grid" style={{marginBottom:'0.75rem'}}>
+        <Sel label="Outcome" value={f.result} onChange={e=>U('result',e.target.value)}>
+          <option value="loss">Defeat</option>
+          <option value="win">Victory</option>
+          <option value="cooperative-win">Coop Win</option>
+          <option value="cooperative-loss">Coop Loss</option>
+          <option value="draw">Draw</option>
+        </Sel>
+        <Inp label="Date" type="date" value={f.date} onChange={e=>U('date',e.target.value)}/>
+        <Inp label="Players" value={f.players} onChange={e=>U('players',e.target.value)} placeholder="Alice, Bob…"/>
+        <Inp label="Duration (min)" type="number" value={f.duration} onChange={e=>U('duration',e.target.value)} placeholder="90"/>
+        <Inp label="Notes" value={f.notes} onChange={e=>U('notes',e.target.value)} placeholder="What happened…" className="col-span-2"/>
+      </div>
+      {scoreCols.length > 0 && (
+        <div style={{marginBottom:'0.75rem'}}>
+          <div style={{fontSize:9,letterSpacing:'0.2em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            Encounter Scores
+            <span style={{flex:1,height:1,background:'var(--border)',display:'block'}}/>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:'0.5rem',marginBottom:'0.5rem'}}>
+            {scoreCols.map(col=>(
+              <div key={col} className="form-group">
+                <label className="form-label">{col}</label>
+                <input className="form-input" type="number" value={scores[col]||''} onChange={e=>setScores(s=>({...s,[col]:e.target.value}))} placeholder="0" style={{textAlign:'center'}}/>
+              </div>
+            ))}
+          </div>
+          {scoreCols.length > 1 && (
+            <div style={{display:'flex',justifyContent:'flex-end',gap:'0.5rem',alignItems:'center'}}>
+              <span style={{fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>Total</span>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.2rem',color:'var(--gold)'}}>{total}</span>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Btn size="sm" variant="primary" onClick={()=>onSave({id:uid(),...f,scores:scoreCols.length>0?scoreCols.reduce((a,c)=>({...a,[c]:parseFloat(scores[c])||0}),{}):null,scoreColumns:scoreCols.length>0?scoreCols:null})}>
+          Log Play
+        </Btn>
+        <Btn size="sm" onClick={onCancel}>Cancel</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── Scenario Block ────────────────────────────────────────────────────────────
+function ScenarioBlock({ scenario, idx, scoreCols, onUpdate, onRemove }) {
+  const [expanded, setExpanded] = useState(true);
+  const [addingPlay, setAddingPlay] = useState(false);
+  const plays = scenario.plays || [];
+  const won = plays.some(p=>p.result==='win'||p.result==='cooperative-win');
+  const attempts = plays.length;
+
+  const addPlay = play => {
+    const isWin = play.result==='win'||play.result==='cooperative-win';
+    onUpdate({...scenario, plays:[...plays, play], completed: isWin || scenario.completed});
+    setAddingPlay(false);
+  };
+  const removePlay = pid => onUpdate({...scenario, plays:plays.filter(p=>p.id!==pid)});
+
+  const RC = {win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
+  const RL = {win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Loss',draw:'Draw'};
+
+  return (
+    <div style={{border:'1px solid var(--border)',borderRadius:'var(--r)',marginBottom:'0.625rem',overflow:'hidden'}}>
+      {/* Scenario header */}
+      <div style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem 1rem',background:'var(--ink-3)',cursor:'pointer'}} onClick={()=>setExpanded(e=>!e)}>
+        <div className="scenario-num" style={{flexShrink:0}}>{idx+1}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',fontWeight:400,color:won?'var(--green)':scenario.completed?'var(--text-dim)':'var(--text)'}}>{scenario.name}</div>
+          <div style={{fontSize:10,color:'var(--text-faint)',marginTop:2,letterSpacing:'0.06em'}}>
+            {attempts===0?'No plays yet':`${attempts} attempt${attempts!==1?'s':''}`}
+            {won&&<span style={{color:'var(--green)',marginLeft:6}}>· Completed ✓</span>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+          {won&&<Badge color="green">Beaten</Badge>}
+          <Btn size="sm" onClick={()=>{setAddingPlay(a=>!a);setExpanded(true);}}>+ Play</Btn>
+          <button onClick={onRemove} style={{background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:13,padding:'0 2px'}}>×</button>
+        </div>
+        <span style={{fontSize:9,color:'var(--text-faint)'}}>{expanded?'▼':'▶'}</span>
+      </div>
+
+      {/* Play log for this scenario */}
+      {expanded && (
+        <div style={{padding:'0.75rem 1rem'}}>
+          {addingPlay && (
+            <ScenarioPlayForm scoreCols={scoreCols} onSave={addPlay} onCancel={()=>setAddingPlay(false)}/>
+          )}
+          {plays.length===0 && !addingPlay && (
+            <div style={{fontSize:11,color:'var(--text-faint)',fontStyle:'italic',padding:'0.25rem 0'}}>No plays logged yet — click "+ Play" to record an attempt</div>
+          )}
+          {[...plays].reverse().map((play, pi)=>(
+            <div key={play.id} style={{background:'var(--ink-2)',border:'1px solid var(--border)',borderLeft:`3px solid var(--${RC[play.result]||'text-faint'})`,borderRadius:'var(--r-sm)',padding:'0.75rem 0.875rem',marginTop:'0.5rem',position:'relative'}}>
+              <button onClick={()=>removePlay(play.id)} style={{position:'absolute',top:6,right:8,background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11}}>×</button>
+              {/* Play header */}
+              <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',marginBottom:4}}>
+                <Badge color={RC[play.result]||'gray'}>{RL[play.result]||play.result}</Badge>
+                {play.date&&<span style={{fontSize:10,color:'var(--text-faint)',letterSpacing:'0.08em'}}>{play.date}</span>}
+                {play.duration&&<span style={{fontSize:10,color:'var(--text-faint)'}}>· {play.duration} min</span>}
+              </div>
+              {/* Players */}
+              {play.players&&(
+                <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap',marginBottom:4}}>
+                  {play.players.split(',').map((p,i)=>(
+                    <span key={i} className={`player-chip ${play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?'winner':''}`}>
+                      {p.trim()}{play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?' ✦':''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Score chips */}
+              {play.scores && play.scoreColumns?.length > 0 && (
+                <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',marginBottom:play.notes?4:0}}>
+                  {play.scoreColumns.map(col=>(
+                    <div key={col} style={{background:'var(--ink-4)',border:'1px solid var(--border)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                      <span style={{fontSize:8,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>{col}</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scores[col]??0}</span>
+                    </div>
+                  ))}
+                  {play.scoreColumns.length>1&&(
+                    <div style={{background:'var(--gold-faint)',border:'1px solid var(--border-bright)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                      <span style={{fontSize:8,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--gold-dim)'}}>Total</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scoreColumns.reduce((s,c)=>s+(play.scores[c]||0),0)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {play.notes&&<div style={{fontSize:11,color:'var(--text-faint)',fontStyle:'italic',marginTop:2}}>{play.notes}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Campaign Detail ──────────────────────────────────────────────────────────
 function CampaignDetail({ campaign, games, onUpdate, onBack }) {
   const g = games.find(x=>x.id===campaign.gameId)||{name:'Unknown'};
   const scoreCols = Array.isArray(g.scoreColumns) ? g.scoreColumns : [];
-  const done = campaign.scenarios?.filter(s=>s.completed).length||0;
-  const total = campaign.scenarios?.length||0;
+  const scenarios = campaign.scenarios || [];
+  const done = scenarios.filter(s=>s.completed||s.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length;
+  const total = scenarios.length;
   const pct = total?Math.round(done/total*100):0;
   const [showAddMod, setShowAddMod] = useState(false);
-  const [addingSc, setAddingSc] = useState(false);
-  const [scForm, setScForm] = useState({name:'',result:'',date:'',notes:''});
-  const [scScores, setScScores] = useState({});
+  const [addingScenario, setAddingScenario] = useState(false);
+  const [scName, setScName] = useState('');
+
   const updateMod = (id,u) => onUpdate({...campaign,modules:campaign.modules.map(m=>m.id===id?u:m)});
   const removeMod = id => onUpdate({...campaign,modules:campaign.modules.filter(m=>m.id!==id)});
   const addMod = m => onUpdate({...campaign,modules:[...(campaign.modules||[]),m]});
-  const addSc = () => {
-    if(!scForm.name) return;
-    const scoreData = scoreCols.length > 0 ? scoreCols.reduce((acc,col)=>({...acc,[col]:parseFloat(scScores[col])||0}),{}) : null;
-    onUpdate({...campaign, scenarios:[...(campaign.scenarios||[]),{
-      id:uid(), ...scForm, completed:!!scForm.result,
-      scores: scoreData, scoreColumns: scoreCols.length > 0 ? scoreCols : null
-    }]});
-    setScForm({name:'',result:'',date:'',notes:''});
-    setScScores({});
-    setAddingSc(false);
+
+  const addScenario = () => {
+    if(!scName.trim()) return;
+    onUpdate({...campaign, scenarios:[...scenarios,{id:uid(),name:scName.trim(),plays:[],completed:false}]});
+    setScName(''); setAddingScenario(false);
   };
-  const toggleSc = i => onUpdate({...campaign,scenarios:campaign.scenarios.map((s,si)=>si!==i?s:{...s,completed:!s.completed})});
-  const removeSc = i => onUpdate({...campaign,scenarios:campaign.scenarios.filter((_,si)=>si!==i)});
+  const updateScenario = (id, updated) => onUpdate({...campaign, scenarios:scenarios.map(s=>s.id===id?updated:s)});
+  const removeScenario = id => onUpdate({...campaign, scenarios:scenarios.filter(s=>s.id!==id)});
 
   return (
     <div className="fade-in">
@@ -1012,7 +1156,7 @@ function CampaignDetail({ campaign, games, onUpdate, onBack }) {
           <div style={{fontSize:11,color:'var(--text-faint)',marginTop:4,letterSpacing:'0.08em'}}>{g.name}{campaign.players?' · '+campaign.players:''}{campaign.startDate?' · Est. '+campaign.startDate:''}</div>
           {total>0&&<div className="flex items-center gap-2 mt-2" style={{maxWidth:260}}>
             <div className="progress-track"><div className="progress-fill" style={{width:pct+'%'}}/></div>
-            <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:'0.1em',whiteSpace:'nowrap'}}>{done}/{total} · {pct}%</span>
+            <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:'0.1em',whiteSpace:'nowrap'}}>{done}/{total} scenarios · {pct}%</span>
           </div>}
         </div>
         <Btn variant="primary" onClick={()=>setShowAddMod(true)}>+ Add Module</Btn>
@@ -1021,70 +1165,31 @@ function CampaignDetail({ campaign, games, onUpdate, onBack }) {
       {(campaign.modules||[]).map(mod=>(
         <ModuleRenderer key={mod.id} mod={mod} campaign={campaign} onUpdate={u=>updateMod(mod.id,u)} onRemove={()=>removeMod(mod.id)}/>
       ))}
+
+      {/* Scenarios */}
       <div className="module-block">
         <div className="module-header">
-          <span className="module-label">Scenarios / Sessions</span>
-          <button className="btn btn-ghost btn-sm" onClick={()=>setAddingSc(a=>!a)}>+ Add</button>
+          <span className="module-label">Scenarios / Encounters</span>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setAddingScenario(a=>!a)}>+ Add Scenario</button>
         </div>
         <div className="module-body">
-          {addingSc&&(
-            <div className="inline-add mb-3">
-              <div className="form-grid mb-2">
-                <Inp label="Name *" value={scForm.name} onChange={e=>setScForm(f=>({...f,name:e.target.value}))} placeholder="Passage Through Mirkwood…" className="col-span-2"/>
-                <Sel label="Result" value={scForm.result} onChange={e=>setScForm(f=>({...f,result:e.target.value}))}>
-                  <option value="">Not played yet</option><option value="win">Victory</option><option value="loss">Defeat</option>
-                </Sel>
-                <Inp label="Date" type="date" value={scForm.date} onChange={e=>setScForm(f=>({...f,date:e.target.value}))}/>
-                <Inp label="Notes" value={scForm.notes} onChange={e=>setScForm(f=>({...f,notes:e.target.value}))} placeholder="Key moments…" className="col-span-2"/>
-              </div>
-              {scoreCols.length > 0 && (
-                <div style={{marginBottom:'0.75rem'}}>
-                  <div style={{fontSize:9,letterSpacing:'0.2em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
-                    Encounter Scores
-                    <span style={{flex:1,height:1,background:'var(--border)',display:'block'}}/>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:'0.5rem'}}>
-                    {scoreCols.map(col=>(
-                      <div key={col} className="form-group">
-                        <label className="form-label">{col}</label>
-                        <input className="form-input" type="number" value={scScores[col]||''} onChange={e=>setScScores(s=>({...s,[col]:e.target.value}))} placeholder="0" style={{textAlign:'center'}}/>
-                      </div>
-                    ))}
-                  </div>
-                  {scoreCols.length > 1 && (
-                    <div style={{marginTop:'0.5rem',display:'flex',justifyContent:'flex-end',gap:'0.5rem',alignItems:'center'}}>
-                      <span style={{fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>Total</span>
-                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)'}}>
-                        {scoreCols.reduce((s,col)=>s+(parseFloat(scScores[col])||0),0)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex gap-2"><Btn size="sm" variant="primary" onClick={addSc}>Add</Btn><Btn size="sm" onClick={()=>{setAddingSc(false);setScScores({});}}>Cancel</Btn></div>
+          {/* Add scenario */}
+          {addingScenario&&(
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.875rem',alignItems:'flex-end'}}>
+              <Inp label="Scenario name *" value={scName} onChange={e=>setScName(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&addScenario()}
+                placeholder="Passage Through Mirkwood…" className="flex-1"/>
+              <Btn size="sm" variant="primary" onClick={addScenario}>Add</Btn>
+              <Btn size="sm" onClick={()=>{setAddingScenario(false);setScName('');}}>Cancel</Btn>
             </div>
           )}
-          {!(campaign.scenarios||[]).length&&!addingSc&&<div style={{fontSize:11,color:'var(--text-faint)',padding:'0.25rem 0',letterSpacing:'0.05em'}}>No scenarios recorded yet</div>}
-          {(campaign.scenarios||[]).map((s,i)=>(
-            <div key={s.id||i} className="scenario-item">
-              <input type="checkbox" checked={s.completed} onChange={()=>toggleSc(i)}/>
-              <div className="scenario-num">{i+1}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <span style={{color:s.completed?'var(--text-faint)':'var(--text-dim)',textDecoration:s.completed?'line-through':'none'}}>{s.name}</span>
-                {s.scores && s.scoreColumns?.length > 0 && (
-                  <div style={{display:'flex',flexWrap:'wrap',gap:'0.35rem',marginTop:4}}>
-                    {s.scoreColumns.map(col=>(
-                      <span key={col} style={{fontSize:8,letterSpacing:'0.08em',padding:'0.1rem 0.4rem',background:'var(--ink-4)',border:'1px solid var(--border)',borderRadius:2,color:'var(--text-faint)'}}>
-                        {col}: <span style={{color:'var(--gold)'}}>{s.scores[col]??0}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {s.date&&<span className="hidden sm-block" style={{fontSize:9,color:'var(--text-faint)',letterSpacing:'0.08em'}}>{s.date}</span>}
-              {s.result&&<Badge color={s.result==='win'?'green':'red'}>{s.result==='win'?'Victory':'Defeat'}</Badge>}
-              <button onClick={()=>removeSc(i)} style={{background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11}}>×</button>
-            </div>
+          {scenarios.length===0&&!addingScenario&&(
+            <div style={{fontSize:11,color:'var(--text-faint)',padding:'0.25rem 0',fontStyle:'italic'}}>No scenarios yet — add your first encounter</div>
+          )}
+          {scenarios.map((s,i)=>(
+            <ScenarioBlock key={s.id||i} scenario={s} idx={i} scoreCols={scoreCols}
+              onUpdate={updated=>updateScenario(s.id,updated)}
+              onRemove={()=>removeScenario(s.id)}/>
           ))}
         </div>
       </div>
