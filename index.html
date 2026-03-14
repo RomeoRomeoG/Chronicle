@@ -1,0 +1,2089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chronicle — Boardgame Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root {
+  --ink: #0d0c0b;
+  --ink-2: #141310;
+  --ink-3: #1c1a17;
+  --ink-4: #252219;
+  --gold: #c9a96e;
+  --gold-dim: #8a7048;
+  --gold-glow: rgba(201,169,110,0.15);
+  --gold-faint: rgba(201,169,110,0.06);
+  --text: #e8e0d0;
+  --text-dim: #9a9080;
+  --text-faint: #5a5248;
+  --border: rgba(201,169,110,0.12);
+  --border-bright: rgba(201,169,110,0.28);
+  --red: #c0614a;
+  --red-dim: rgba(192,97,74,0.15);
+  --green: #7a9e6a;
+  --green-dim: rgba(122,158,106,0.15);
+  --blue: #5a82b0;
+  --blue-dim: rgba(90,130,176,0.15);
+  --amber: #b8843a;
+  --amber-dim: rgba(184,132,58,0.15);
+  --purple: #8b6aaa;
+  --purple-dim: rgba(139,106,170,0.15);
+  --r: 8px;
+  --r-sm: 4px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 17px;
+  font-weight: 300;
+  min-height: 100vh;
+  /* Subtle dot grid */
+  background-image: radial-gradient(circle, rgba(201,169,110,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-attachment: fixed;
+}
+
+/* Noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 1.25rem 5rem;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────────── */
+.display { font-family: 'Cormorant Garamond', serif; }
+h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 400; letter-spacing: 0.01em; color: var(--text); }
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.site-header {
+  padding: 2rem 0 0;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.25rem;
+  position: relative;
+}
+.site-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 80px;
+  height: 1px;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+.site-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.75rem;
+  font-weight: 300;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.site-title .rune { font-size: 1.1rem; opacity: 0.7; }
+.site-subtitle { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); margin-top: 2px; font-family: 'DM Mono', monospace; }
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 2rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 0.6rem 1.1rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text-dim); }
+.tab-btn.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 0.625rem;
+  transition: border-color 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-glow), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.card:hover { border-color: var(--border-bright); }
+.card:hover::before { opacity: 1; }
+
+.card-campaign {
+  background: linear-gradient(135deg, var(--ink-2) 0%, var(--ink-3) 100%);
+}
+
+/* ── Stat Cards ─────────────────────────────────────────────────────────────── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.625rem; margin-bottom: 1.75rem; }
+.stat-card {
+  background: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+}
+.stat-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.4rem;
+}
+.stat-value {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.75rem;
+  font-weight: 400;
+  color: var(--gold);
+  line-height: 1;
+}
+.stat-sub { font-size: 10px; color: var(--text-faint); margin-top: 0.3rem; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: var(--r-sm);
+  padding: 0.4rem 0.875rem;
+  cursor: pointer;
+  border: 1px solid var(--border-bright);
+  background: transparent;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+.btn:hover { color: var(--text); border-color: var(--gold-dim); background: var(--gold-faint); }
+
+.btn-primary {
+  background: var(--gold-faint);
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+.btn-primary:hover { background: rgba(201,169,110,0.15); border-color: var(--gold); color: var(--gold); box-shadow: 0 0 12px var(--gold-glow); }
+
+.btn-danger { color: var(--red); border-color: rgba(192,97,74,0.25); }
+.btn-danger:hover { background: var(--red-dim); border-color: var(--red); }
+
+.btn-ghost { border-color: transparent; color: var(--text-faint); }
+.btn-ghost:hover { color: var(--text-dim); background: var(--gold-faint); border-color: var(--border); }
+
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 9px; }
+
+/* ── Badges ─────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2px;
+  font-weight: 400;
+}
+.badge-gray { background: rgba(90,82,72,0.3); color: var(--text-faint); border: 1px solid rgba(90,82,72,0.4); }
+.badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(122,158,106,0.3); }
+.badge-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(192,97,74,0.3); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(90,130,176,0.3); }
+.badge-purple { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(139,106,170,0.3); }
+.badge-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(184,132,58,0.3); }
+.badge-gold { background: var(--gold-faint); color: var(--gold); border: 1px solid rgba(201,169,110,0.3); }
+
+/* ── Form Elements ──────────────────────────────────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.form-label { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-faint); }
+.form-input, .form-select, .form-textarea {
+  background: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.75rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+}
+.form-input::placeholder { color: var(--text-faint); }
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--gold-dim);
+  box-shadow: 0 0 0 1px var(--gold-faint);
+}
+.form-select { cursor: pointer; }
+.form-textarea { resize: none; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.col-span-2 { grid-column: 1 / -1; }
+
+/* ── Modal ──────────────────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+  z-index: 100;
+}
+.modal-box {
+  background: var(--ink-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--r);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(201,169,110,0.05);
+}
+.modal-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 10%; right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.3rem;
+  font-weight: 400;
+  color: var(--gold);
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.05em;
+}
+.modal-close {
+  position: absolute;
+  top: 1rem; right: 1rem;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem;
+  transition: color 0.15s;
+}
+.modal-close:hover { color: var(--text); }
+
+/* ── Progress Bar ───────────────────────────────────────────────────────────── */
+.progress-track {
+  height: 2px;
+  background: var(--ink-4);
+  border-radius: 1px;
+  overflow: hidden;
+  flex: 1;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  border-radius: 1px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 6px var(--gold-glow);
+}
+
+/* ── Module blocks ──────────────────────────────────────────────────────────── */
+.module-block {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 0.625rem;
+  overflow: hidden;
+  background: var(--ink-2);
+}
+.module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: var(--ink-3);
+  border-bottom: 1px solid var(--border);
+}
+.module-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.module-body { padding: 0.875rem 1rem; }
+
+/* ── Score table ────────────────────────────────────────────────────────────── */
+.score-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.score-table th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+.score-table th:not(:first-child) { text-align: right; }
+.score-table td { padding: 0.35rem 0.4rem; border-bottom: 1px solid rgba(201,169,110,0.05); }
+.score-table tr:last-child td { border-bottom: none; }
+.score-table .total-row td { color: var(--gold); font-size: 10px; letter-spacing: 0.05em; border-top: 1px solid var(--border); border-bottom: none; padding-top: 0.5rem; }
+.score-table input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 300;
+  width: 100%;
+  padding: 0.1rem 0.25rem;
+  border-radius: 2px;
+}
+.score-table input:focus { background: var(--ink-4); }
+.score-table input[type="number"] { text-align: right; width: 60px; }
+
+/* ── Resource cards ─────────────────────────────────────────────────────────── */
+.resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.resource-card {
+  background: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.75rem;
+  position: relative;
+}
+.resource-name { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.5rem; }
+.resource-controls { display: flex; align-items: center; gap: 0.4rem; }
+.rc-btn {
+  width: 22px; height: 22px;
+  background: var(--ink-4);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  font-family: monospace;
+}
+.rc-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+.resource-value {
+  flex: 1;
+  text-align: center;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--text);
+}
+.resource-value input {
+  width: 100%;
+  text-align: center;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+/* ── Checklist ──────────────────────────────────────────────────────────────── */
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(201,169,110,0.05);
+  font-size: 12px;
+}
+.checklist-item:last-child { border-bottom: none; }
+.checklist-item input[type="checkbox"] { accent-color: var(--gold); cursor: pointer; flex-shrink: 0; }
+.checklist-item.checked span { text-decoration: line-through; color: var(--text-faint); }
+
+/* ── Inventory ──────────────────────────────────────────────────────────────── */
+.inv-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(201,169,110,0.05);
+  font-size: 12px;
+}
+.inv-item:last-child { border-bottom: none; }
+.inv-icon { width: 24px; text-align: center; flex-shrink: 0; }
+.qty-ctrl { display: flex; align-items: center; gap: 0.25rem; }
+.qty-btn {
+  width: 18px; height: 18px;
+  background: var(--ink-4);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s;
+}
+.qty-btn:hover { border-color: var(--gold-dim); }
+
+/* ── Scenario items ─────────────────────────────────────────────────────────── */
+.scenario-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(201,169,110,0.05);
+  font-size: 12px;
+}
+.scenario-item:last-child { border-bottom: none; }
+.scenario-item input[type="checkbox"] { accent-color: var(--gold); cursor: pointer; flex-shrink: 0; }
+.scenario-num {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* ── Player chips ───────────────────────────────────────────────────────────── */
+.player-chip {
+  font-size: 10px;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2px;
+  background: var(--ink-4);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.player-chip.winner {
+  background: var(--green-dim);
+  border-color: rgba(122,158,106,0.3);
+  color: var(--green);
+}
+
+/* ── Section labels ─────────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Section header ─────────────────────────────────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+.section-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+/* ── Module preset cards ────────────────────────────────────────────────────── */
+.preset-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 0.5rem;
+}
+.preset-card:hover { border-color: var(--border-bright); background: var(--gold-faint); }
+.preset-card.selected { border-color: var(--gold-dim); background: var(--gold-faint); }
+.preset-card.selected .preset-name { color: var(--gold); }
+.preset-name { font-size: 12px; font-weight: 400; color: var(--text-dim); margin-bottom: 0.2rem; }
+.preset-desc { font-size: 10px; color: var(--text-faint); line-height: 1.5; }
+
+/* ── Bar chart ──────────────────────────────────────────────────────────────── */
+.bar-chart { display: flex; align-items: flex-end; gap: 0.375rem; height: 72px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.bar-fill {
+  width: 100%;
+  background: linear-gradient(to top, var(--gold-dim), var(--gold));
+  border-radius: 2px 2px 0 0;
+  opacity: 0.8;
+  min-height: 3px;
+}
+.bar-label { font-size: 8px; color: var(--text-faint); }
+.bar-count { font-size: 9px; color: var(--text-dim); }
+
+/* ── Leaderboard ────────────────────────────────────────────────────────────── */
+.leaderboard-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.leaderboard-name { font-size: 12px; min-width: 100px; color: var(--text-dim); }
+.leaderboard-bar { flex: 1; height: 3px; background: var(--ink-4); border-radius: 2px; overflow: hidden; }
+.leaderboard-fill { height: 100%; background: linear-gradient(90deg, var(--amber-dim), var(--amber)); border-radius: 2px; box-shadow: 0 0 6px rgba(184,132,58,0.3); }
+.leaderboard-val { font-size: 10px; color: var(--text-faint); min-width: 50px; text-align: right; }
+
+/* ── Empty state ────────────────────────────────────────────────────────────── */
+.empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.empty-rune { font-family: 'Cormorant Garamond', serif; font-size: 2.5rem; color: var(--border-bright); display: block; margin-bottom: 0.75rem; }
+
+/* ── Filter pills ───────────────────────────────────────────────────────────── */
+.filter-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-pill {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-pill:hover { border-color: var(--border-bright); color: var(--text-dim); }
+.filter-pill.active { border-color: var(--gold-dim); color: var(--gold); background: var(--gold-faint); }
+
+/* ── Stats table ────────────────────────────────────────────────────────────── */
+.stats-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.stats-table th { text-align: left; padding: 0.4rem 0.5rem; color: var(--text-faint); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; border-bottom: 1px solid var(--border); font-weight: 400; }
+.stats-table td { padding: 0.5rem 0.5rem; border-bottom: 1px solid rgba(201,169,110,0.05); color: var(--text-dim); }
+.stats-table tr:last-child td { border-bottom: none; }
+.stats-table td:first-child { color: var(--text); font-weight: 400; }
+
+/* ── Back link ──────────────────────────────────────────────────────────────── */
+.back-link {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  transition: color 0.15s;
+  padding: 0;
+}
+.back-link:hover { color: var(--gold); }
+
+/* ── Utility ────────────────────────────────────────────────────────────────── */
+.text-gold { color: var(--gold); }
+.text-dim { color: var(--text-dim); }
+.text-faint { color: var(--text-faint); }
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-shrink-0 { flex-shrink: 0; }
+.min-w-0 { min-width: 0; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-3 { margin-bottom: 0.75rem; }
+.mb-4 { margin-bottom: 1rem; }
+.w-full { width: 100%; }
+.overflow-x-auto { overflow-x: auto; }
+.text-right { text-align: right; }
+.strikethrough { text-decoration: line-through; }
+.hidden { display: none; }
+@media (min-width: 480px) { .sm-block { display: block; } }
+
+.divider { height: 1px; background: var(--border); margin: 0.875rem 0; }
+.note-box { background: var(--ink-3); border: 1px solid var(--border); border-left: 2px solid var(--gold-dim); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 0.75rem 1rem; font-size: 12px; color: var(--text-dim); margin-bottom: 0.875rem; font-style: italic; line-height: 1.6; }
+
+.inline-add { background: var(--ink-3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.875rem; margin-bottom: 0.75rem; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.2s ease; }
+
+/* ── Bottom Nav (mobile) ─────────────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 50;
+  background: rgba(10,9,8,0.95);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border-bright);
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.6);
+}
+.bnav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0.55rem 0.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.bnav-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 25%; right: 25%;
+  height: 1px;
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.bnav-btn.active::before { opacity: 1; }
+.bnav-icon { font-size: 1.15rem; line-height: 1; }
+.bnav-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  transition: color 0.15s;
+}
+.bnav-btn.active .bnav-label { color: var(--gold); }
+
+/* ── FAB ─────────────────────────────────────────────────────────────────── */
+.fab {
+  position: fixed;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  right: 1.25rem;
+  z-index: 49;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--gold-faint);
+  border: 1px solid var(--gold-dim);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem;
+  color: var(--gold);
+  box-shadow: 0 0 20px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.5);
+  transition: all 0.2s;
+}
+.fab:hover { box-shadow: 0 0 30px var(--gold-glow); transform: scale(1.08); }
+.fab:active { transform: scale(0.95); }
+
+/* ── Mobile layout ───────────────────────────────────────────────────────── */
+/* Default = mobile */
+#root { padding: 0 0.875rem 80px; }
+.site-header { padding: 1rem 0 0.75rem; margin-bottom: 1.25rem; }
+.site-title { font-size: 1.35rem; }
+.site-subtitle { display: none; }
+
+/* Hide desktop tabs on mobile, show bottom nav */
+.tabs { display: none; }
+.bottom-nav { display: flex; }
+.fab { display: flex; }
+
+.stat-grid { grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 1.25rem; }
+.stat-value { font-size: 1.4rem; }
+.stat-sub { display: none; }
+
+.card { padding: 0.875rem 1rem; }
+.form-grid { grid-template-columns: 1fr; }
+.col-span-2 { grid-column: 1; }
+
+/* Modal: sheet from bottom on mobile */
+.modal-backdrop { align-items: flex-end; padding: 0; }
+.modal-box { border-radius: var(--r) var(--r) 0 0; max-height: 92vh; max-width: 100%; }
+
+.section-header { margin-bottom: 1rem; }
+/* Hide inline add button — use FAB */
+.section-header .btn-primary { display: none; }
+
+.resource-grid { grid-template-columns: repeat(2, 1fr); }
+.score-table input[type="number"] { width: 46px; }
+.back-link { margin-bottom: 1rem; }
+
+/* ── Desktop layout (640px+) ─────────────────────────────────────────────── */
+@media (min-width: 640px) {
+  #root { padding: 0 1.25rem 5rem; }
+  .site-header { padding: 2rem 0 0; margin-bottom: 2rem; }
+  .site-title { font-size: 1.75rem; }
+  .site-subtitle { display: block; }
+
+  .tabs { display: flex; }
+  .bottom-nav { display: none; }
+  .fab { display: none; }
+
+  .stat-grid { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.625rem; margin-bottom: 1.75rem; }
+  .stat-value { font-size: 1.75rem; }
+  .stat-sub { display: block; }
+
+  .card { padding: 1.1rem 1.25rem; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .col-span-2 { grid-column: 1 / -1; }
+
+  .modal-backdrop { align-items: flex-start; padding: 2rem 1rem; }
+  .modal-box { border-radius: var(--r); max-height: 85vh; max-width: 480px; }
+
+  .section-header { margin-bottom: 1.25rem; }
+  .section-header .btn-primary { display: inline-flex; }
+
+  .resource-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .score-table input[type="number"] { width: 60px; }
+  .back-link { margin-bottom: 1.5rem; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback } = React;
+
+const STORE_KEY = "bgtracker-v3";
+function loadData() { try { const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
+function saveData(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
+const EMPTY = { games: [], plays: [], campaigns: [] };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+// ── Badge ────────────────────────────────────────────────────────────────────
+const BADGE_CLASS = { gray:'badge-gray', green:'badge-green', red:'badge-red', blue:'badge-blue', purple:'badge-purple', amber:'badge-amber', gold:'badge-gold' };
+const Badge = ({ children, color='gray' }) => <span className={`badge ${BADGE_CLASS[color]||'badge-gray'}`}>{children}</span>;
+
+// ── Button ───────────────────────────────────────────────────────────────────
+const Btn = ({ children, onClick, variant='default', size='', className='' }) => (
+  <button onClick={onClick} className={`btn ${variant==='primary'?'btn-primary':variant==='danger'?'btn-danger':variant==='ghost'?'btn-ghost':''} ${size==='sm'?'btn-sm':''} ${className}`}>{children}</button>
+);
+
+// ── Input ────────────────────────────────────────────────────────────────────
+const Inp = ({ label, className:cls='', ...p }) => (
+  <div className={`form-group ${cls}`}>
+    {label && <label className="form-label">{label}</label>}
+    <input className="form-input" {...p} />
+  </div>
+);
+const Sel = ({ label, children, className:cls='', ...p }) => (
+  <div className={`form-group ${cls}`}>
+    {label && <label className="form-label">{label}</label>}
+    <select className="form-select" {...p}>{children}</select>
+  </div>
+);
+const Txta = ({ label, className:cls='', ...p }) => (
+  <div className={`form-group ${cls}`}>
+    {label && <label className="form-label">{label}</label>}
+    <textarea className="form-textarea" rows={3} {...p} />
+  </div>
+);
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+const Modal = ({ title, children, onClose }) => (
+  <div className="modal-backdrop" onClick={e => e.target.classList.contains('modal-backdrop') && onClose()}>
+    <div className="modal-box fade-in">
+      <button className="modal-close" onClick={onClose}>×</button>
+      <div className="modal-title">{title}</div>
+      {children}
+    </div>
+  </div>
+);
+
+// ── Score Table Module ───────────────────────────────────────────────────────
+function ScoreTableModule({ mod, onUpdate }) {
+  const cols = mod.config?.columns || ['Score'];
+  const rows = mod.data?.rows || [];
+  const totals = cols.map((_,ci) => rows.reduce((s,r) => s + (parseFloat(r.values?.[ci])||0), 0));
+  const setCell = (ri,ci,val) => onUpdate({...mod, data:{...mod.data, rows: rows.map((r,i)=>i!==ri?r:{...r,values:(r.values||cols.map(()=>'')).map((v,j)=>j===ci?val:v)})}});
+  const addRow = () => onUpdate({...mod, data:{...mod.data, rows:[...rows,{id:uid(),label:'',values:cols.map(()=>'')}]}});
+  const removeRow = ri => onUpdate({...mod, data:{...mod.data, rows:rows.filter((_,i)=>i!==ri)}});
+  const setRowLabel = (ri,val) => onUpdate({...mod, data:{...mod.data, rows:rows.map((r,i)=>i!==ri?r:{...r,label:val})}});
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="score-table">
+          <thead><tr>
+            <th>{mod.config?.rowLabel||'Scenario'}</th>
+            {cols.map((c,i)=><th key={i} style={{textAlign:'right'}}>{c}</th>)}
+            <th style={{width:24}}></th>
+          </tr></thead>
+          <tbody>
+            {rows.map((row,ri)=>(
+              <tr key={row.id}>
+                <td><input value={row.label} onChange={e=>setRowLabel(ri,e.target.value)} placeholder="Row label…"/></td>
+                {cols.map((_,ci)=><td key={ci}><input type="number" value={row.values?.[ci]??''} onChange={e=>setCell(ri,ci,e.target.value)} style={{textAlign:'right',width:60}}/></td>)}
+                <td><button onClick={()=>removeRow(ri)} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12}}>×</button></td>
+              </tr>
+            ))}
+            {rows.length>0&&<tr className="total-row">
+              <td style={{fontSize:9,letterSpacing:'0.15em',textTransform:'uppercase'}}>Total</td>
+              {totals.map((t,i)=><td key={i} style={{textAlign:'right',fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem'}}>{t}</td>)}
+              <td></td>
+            </tr>}
+          </tbody>
+        </table>
+      </div>
+      <button className="btn btn-ghost btn-sm mt-2" onClick={addRow}>+ Add row</button>
+    </div>
+  );
+}
+
+// ── Resource Module ──────────────────────────────────────────────────────────
+function ResourceModule({ mod, onUpdate }) {
+  const res = mod.data?.resources || [];
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({name:'',value:'0',max:''});
+  const adjust = (i,d) => onUpdate({...mod, data:{...mod.data, resources:res.map((r,ri)=>ri!==i?r:{...r,value:Math.max(0,Math.min(r.max??Infinity,(r.value||0)+d))})}});
+  const setVal = (i,v) => onUpdate({...mod, data:{...mod.data, resources:res.map((r,ri)=>ri!==i?r:{...r,value:parseFloat(v)||0})}});
+  const addRes = () => { if(!f.name)return; onUpdate({...mod,data:{...mod.data,resources:[...res,{id:uid(),name:f.name,value:parseFloat(f.value)||0,max:f.max?parseFloat(f.max):null}]}}); setF({name:'',value:'0',max:''}); setAdding(false); };
+  const removeRes = i => onUpdate({...mod,data:{...mod.data,resources:res.filter((_,ri)=>ri!==i)}});
+  return (
+    <div>
+      <div className="resource-grid">
+        {res.map((r,i)=>(
+          <div key={r.id} className="resource-card">
+            <button onClick={()=>removeRes(i)} style={{position:'absolute',top:4,right:6,background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11}}>×</button>
+            <div className="resource-name">{r.name}</div>
+            <div className="resource-controls">
+              <button className="rc-btn" onClick={()=>adjust(i,-1)}>−</button>
+              <div className="resource-value"><input type="number" value={r.value} onChange={e=>setVal(i,e.target.value)}/></div>
+              <button className="rc-btn" onClick={()=>adjust(i,1)}>+</button>
+            </div>
+            {r.max!=null&&<div style={{marginTop:6}}>
+              <div className="progress-track"><div className="progress-fill" style={{width:`${Math.min(100,(r.value/r.max)*100)}%`}}/></div>
+              <div style={{fontSize:9,color:'var(--text-faint)',textAlign:'right',marginTop:2}}>{r.value} / {r.max}</div>
+            </div>}
+          </div>
+        ))}
+      </div>
+      {adding?(
+        <div className="inline-add">
+          <div className="form-grid" style={{marginBottom:'0.625rem'}}>
+            <Inp label="Name" value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))} placeholder="Threat…"/>
+            <Inp label="Start value" type="number" value={f.value} onChange={e=>setF(p=>({...p,value:e.target.value}))}/>
+            <Inp label="Max (optional)" type="number" value={f.max} onChange={e=>setF(p=>({...p,max:e.target.value}))}/>
+          </div>
+          <div className="flex gap-2"><Btn size="sm" variant="primary" onClick={addRes}>Add</Btn><Btn size="sm" onClick={()=>setAdding(false)}>Cancel</Btn></div>
+        </div>
+      ):<button className="btn btn-ghost btn-sm" onClick={()=>setAdding(true)}>+ Add resource</button>}
+    </div>
+  );
+}
+
+// ── Inventory Module ─────────────────────────────────────────────────────────
+function InventoryModule({ mod, onUpdate }) {
+  const items = mod.data?.items || [];
+  const ICONS = {weapon:'⚔️',armor:'🛡️',consumable:'🧪',currency:'💰',quest:'📜',other:'📦'};
+  const COLORS = {weapon:'red',armor:'blue',consumable:'green',currency:'amber',quest:'purple',other:'gray'};
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({name:'',category:'quest',qty:1,owner:'',notes:''});
+  const addItem = () => { if(!form.name)return; onUpdate({...mod,data:{...mod.data,items:[...items,{id:uid(),...form}]}}); setForm({name:'',category:'quest',qty:1,owner:'',notes:''}); setAdding(false); };
+  const removeItem = i => onUpdate({...mod,data:{...mod.data,items:items.filter((_,ri)=>ri!==i)}});
+  const adjQty = (i,d) => onUpdate({...mod,data:{...mod.data,items:items.map((it,ri)=>ri!==i?it:{...it,qty:Math.max(0,(it.qty||1)+d)})}});
+  return (
+    <div>
+      {items.map((it,i)=>(
+        <div key={it.id} className="inv-item">
+          <span className="inv-icon">{ICONS[it.category]||'📦'}</span>
+          <div className="flex-1 min-w-0">
+            <span style={{fontWeight:400,color:'var(--text)'}}>{it.name}</span>
+            {it.owner&&<span style={{fontSize:10,color:'var(--text-faint)',marginLeft:6}}>({it.owner})</span>}
+            <span style={{marginLeft:6}}><Badge color={COLORS[it.category]||'gray'}>{it.category}</Badge></span>
+            {it.notes&&<div style={{fontSize:10,color:'var(--text-faint)'}} className="truncate">{it.notes}</div>}
+          </div>
+          <div className="qty-ctrl">
+            <button className="qty-btn" onClick={()=>adjQty(i,-1)}>−</button>
+            <span style={{fontSize:11,color:'var(--text-dim)',width:20,textAlign:'center'}}>{it.qty||1}</span>
+            <button className="qty-btn" onClick={()=>adjQty(i,1)}>+</button>
+          </div>
+          <button onClick={()=>removeItem(i)} style={{background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11,marginLeft:4}}>×</button>
+        </div>
+      ))}
+      {adding?(
+        <div className="inline-add mt-2">
+          <div className="form-grid mb-2">
+            <Inp label="Item name *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Sting, Lembas…" className="col-span-2"/>
+            <Sel label="Category" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+              {Object.keys(ICONS).map(c=><option key={c} value={c}>{c}</option>)}
+            </Sel>
+            <Inp label="Qty" type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:parseInt(e.target.value)||1}))}/>
+            <Inp label="Owner" value={form.owner} onChange={e=>setForm(f=>({...f,owner:e.target.value}))} placeholder="Alice…"/>
+            <Inp label="Notes" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Description…"/>
+          </div>
+          <div className="flex gap-2"><Btn size="sm" variant="primary" onClick={addItem}>Add item</Btn><Btn size="sm" onClick={()=>setAdding(false)}>Cancel</Btn></div>
+        </div>
+      ):<button className="btn btn-ghost btn-sm mt-1" onClick={()=>setAdding(true)}>+ Add item</button>}
+    </div>
+  );
+}
+
+// ── Notes Module ─────────────────────────────────────────────────────────────
+const NotesModule = ({mod,onUpdate}) => (
+  <textarea className="form-textarea w-full" rows={5} value={mod.data?.text||''} onChange={e=>onUpdate({...mod,data:{text:e.target.value}})} placeholder="Chronicle your story here — narrative decisions, lore, discoveries…" style={{fontStyle:'italic',lineHeight:1.7}}/>
+);
+
+// ── Checklist Module ─────────────────────────────────────────────────────────
+function ChecklistModule({ mod, onUpdate }) {
+  const items = mod.data?.items || [];
+  const [adding, setAdding] = useState(false);
+  const [val, setVal] = useState('');
+  const toggle = i => onUpdate({...mod,data:{...mod.data,items:items.map((it,ri)=>ri!==i?it:{...it,checked:!it.checked})}});
+  const addItem = () => { if(!val)return; onUpdate({...mod,data:{...mod.data,items:[...items,{id:uid(),label:val,checked:false}]}}); setVal(''); setAdding(false); };
+  const removeItem = i => onUpdate({...mod,data:{...mod.data,items:items.filter((_,ri)=>ri!==i)}});
+  const done = items.filter(i=>i.checked).length;
+  return (
+    <div>
+      {items.length>0&&<div style={{fontSize:9,letterSpacing:'0.12em',color:'var(--text-faint)',marginBottom:8}}>{done}/{items.length} marked</div>}
+      {items.map((it,i)=>(
+        <div key={it.id} className={`checklist-item ${it.checked?'checked':''}`}>
+          <input type="checkbox" checked={it.checked} onChange={()=>toggle(i)}/>
+          <span className="flex-1" style={{color:it.checked?'var(--text-faint)':'var(--text-dim)'}}>{it.label}</span>
+          <button onClick={()=>removeItem(i)} style={{background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11}}>×</button>
+        </div>
+      ))}
+      {adding?(
+        <div className="flex gap-2 mt-2">
+          <input className="form-input" style={{flex:1}} value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addItem()} placeholder={`New ${mod.config?.itemLabel||'item'}…`} autoFocus/>
+          <Btn size="sm" variant="primary" onClick={addItem}>Add</Btn>
+          <Btn size="sm" onClick={()=>setAdding(false)}>Cancel</Btn>
+        </div>
+      ):<button className="btn btn-ghost btn-sm mt-2" onClick={()=>setAdding(true)}>+ Add {mod.config?.itemLabel||'item'}</button>}
+    </div>
+  );
+}
+
+// ── Module Renderer ──────────────────────────────────────────────────────────
+function ModuleRenderer({ mod, campaign, onUpdate, onRemove }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const inner = {
+    score_table: <ScoreTableModule mod={mod} campaign={campaign} onUpdate={onUpdate}/>,
+    resource: <ResourceModule mod={mod} onUpdate={onUpdate}/>,
+    inventory: <InventoryModule mod={mod} onUpdate={onUpdate}/>,
+    notes: <NotesModule mod={mod} onUpdate={onUpdate}/>,
+    checklist: <ChecklistModule mod={mod} onUpdate={onUpdate}/>,
+  }[mod.type];
+  return (
+    <div className="module-block">
+      <div className="module-header">
+        <button className="module-label" onClick={()=>setCollapsed(c=>!c)}>
+          <span style={{fontSize:8}}>{collapsed?'▶':'▼'}</span>{mod.label}
+        </button>
+        <button className="btn btn-ghost btn-sm" style={{color:'var(--red)',borderColor:'transparent'}} onClick={onRemove}>Remove</button>
+      </div>
+      {!collapsed&&<div className="module-body">{inner}</div>}
+    </div>
+  );
+}
+
+// ── Add Module Modal ─────────────────────────────────────────────────────────
+function AddModuleModal({ onAdd, onClose }) {
+  const [type, setType] = useState('score_table');
+  const [label, setLabel] = useState('Score Tracker');
+  const [cols, setCols] = useState('Score');
+  const [rowLabel, setRowLabel] = useState('Scenario');
+  const [itemLabel, setItemLabel] = useState('item');
+  const DEFAULTS = {score_table:'Score Tracker',resource:'Resources',inventory:'Party Inventory',checklist:'Boons & Burdens',notes:'Story Notes'};
+  const PRESETS = [
+    {type:'score_table',label:'Score table',desc:'Per-row scores with running totals. LotR LCG, Arkham Horror, Pandemic Legacy.'},
+    {type:'resource',label:'Resource trackers',desc:'Named counters with +/− controls. Threat, Gold, Health, Corruption…'},
+    {type:'inventory',label:'Party inventory',desc:'Items with categories, quantities and owners. Weapons, armour, currencies.'},
+    {type:'checklist',label:'Checklist',desc:'Toggleable entries — boons, burdens, unlocked scenarios, injuries.'},
+    {type:'notes',label:'Story chronicle',desc:'Free-text field for narrative, lore, session summaries.'},
+  ];
+  return (
+    <Modal title="Add Tracking Module" onClose={onClose}>
+      <div className="section-label" style={{marginBottom:'0.75rem'}}>Module type</div>
+      {PRESETS.map(p=>(
+        <div key={p.type} className={`preset-card ${type===p.type?'selected':''}`} onClick={()=>{setType(p.type);setLabel(DEFAULTS[p.type]);}}>
+          <div className="preset-name">{p.label}</div>
+          <div className="preset-desc">{p.desc}</div>
+        </div>
+      ))}
+      <div style={{marginTop:'1rem',display:'flex',flexDirection:'column',gap:'0.625rem'}}>
+        <Inp label="Module label" value={label} onChange={e=>setLabel(e.target.value)}/>
+        {type==='score_table'&&<>
+          <Inp label="Column names (comma separated)" value={cols} onChange={e=>setCols(e.target.value)} placeholder="Score, Threat Damage, Side Quests…"/>
+          <Inp label="Row label" value={rowLabel} onChange={e=>setRowLabel(e.target.value)} placeholder="Scenario, Session…"/>
+        </>}
+        {type==='checklist'&&<Inp label="Item label (singular)" value={itemLabel} onChange={e=>setItemLabel(e.target.value)} placeholder="boon, burden…"/>}
+      </div>
+      <div className="flex gap-2" style={{marginTop:'1.25rem',justifyContent:'flex-end'}}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" onClick={()=>{
+          const config=type==='score_table'?{columns:cols.split(',').map(s=>s.trim()).filter(Boolean),rowLabel}:type==='checklist'?{itemLabel}:{};
+          onAdd({id:uid(),type,label,config,data:{}});onClose();
+        }}>Add Module</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Scenario Play Log Form ────────────────────────────────────────────────────
+function ScenarioPlayForm({ scoreCols, onSave, onCancel }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [f, setF] = useState({result:'loss',date:today,players:'',winner:'',duration:'',notes:''});
+  const [scores, setScores] = useState({});
+  const U = (k,v) => setF(p=>({...p,[k]:v}));
+  const RC = {win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
+  const RL = {win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Loss',draw:'Draw'};
+  const total = scoreCols.reduce((s,col)=>s+(parseFloat(scores[col])||0),0);
+  return (
+    <div style={{background:'var(--ink-4)',border:'1px solid var(--border-bright)',borderRadius:'var(--r)',padding:'1rem',marginTop:'0.5rem'}}>
+      <div className="form-grid" style={{marginBottom:'0.75rem'}}>
+        <Sel label="Outcome" value={f.result} onChange={e=>U('result',e.target.value)}>
+          <option value="loss">Defeat</option>
+          <option value="win">Victory</option>
+          <option value="cooperative-win">Coop Win</option>
+          <option value="cooperative-loss">Coop Loss</option>
+          <option value="draw">Draw</option>
+        </Sel>
+        <Inp label="Date" type="date" value={f.date} onChange={e=>U('date',e.target.value)}/>
+        <Inp label="Players" value={f.players} onChange={e=>U('players',e.target.value)} placeholder="Alice, Bob…"/>
+        <Inp label="Duration (min)" type="number" value={f.duration} onChange={e=>U('duration',e.target.value)} placeholder="90"/>
+        <Inp label="Notes" value={f.notes} onChange={e=>U('notes',e.target.value)} placeholder="What happened…" className="col-span-2"/>
+      </div>
+      {scoreCols.length > 0 && (
+        <div style={{marginBottom:'0.75rem'}}>
+          <div style={{fontSize:9,letterSpacing:'0.2em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:'0.5rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            Encounter Scores
+            <span style={{flex:1,height:1,background:'var(--border)',display:'block'}}/>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:'0.5rem',marginBottom:'0.5rem'}}>
+            {scoreCols.map(col=>(
+              <div key={col} className="form-group">
+                <label className="form-label">{col}</label>
+                <input className="form-input" type="number" value={scores[col]||''} onChange={e=>setScores(s=>({...s,[col]:e.target.value}))} placeholder="0" style={{textAlign:'center'}}/>
+              </div>
+            ))}
+          </div>
+          {scoreCols.length > 1 && (
+            <div style={{display:'flex',justifyContent:'flex-end',gap:'0.5rem',alignItems:'center'}}>
+              <span style={{fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>Total</span>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.2rem',color:'var(--gold)'}}>{total}</span>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Btn size="sm" variant="primary" onClick={()=>onSave({id:uid(),...f,scores:scoreCols.length>0?scoreCols.reduce((a,c)=>({...a,[c]:parseFloat(scores[c])||0}),{}):null,scoreColumns:scoreCols.length>0?scoreCols:null})}>
+          Log Play
+        </Btn>
+        <Btn size="sm" onClick={onCancel}>Cancel</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── Scenario Block ────────────────────────────────────────────────────────────
+function ScenarioBlock({ scenario, idx, scoreCols, onUpdate, onRemove }) {
+  const [expanded, setExpanded] = useState(true);
+  const [addingPlay, setAddingPlay] = useState(false);
+  const plays = scenario.plays || [];
+  const won = plays.some(p=>p.result==='win'||p.result==='cooperative-win');
+  const attempts = plays.length;
+
+  const addPlay = play => {
+    const isWin = play.result==='win'||play.result==='cooperative-win';
+    onUpdate({...scenario, plays:[...plays, play], completed: isWin || scenario.completed});
+    setAddingPlay(false);
+  };
+  const removePlay = pid => onUpdate({...scenario, plays:plays.filter(p=>p.id!==pid)});
+
+  const RC = {win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
+  const RL = {win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Loss',draw:'Draw'};
+
+  return (
+    <div style={{border:'1px solid var(--border)',borderRadius:'var(--r)',marginBottom:'0.625rem',overflow:'hidden'}}>
+      {/* Scenario header */}
+      <div style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem 1rem',background:'var(--ink-3)',cursor:'pointer'}} onClick={()=>setExpanded(e=>!e)}>
+        <div className="scenario-num" style={{flexShrink:0}}>{idx+1}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',fontWeight:400,color:won?'var(--green)':scenario.completed?'var(--text-dim)':'var(--text)'}}>{scenario.name}</div>
+          <div style={{fontSize:10,color:'var(--text-faint)',marginTop:2,letterSpacing:'0.06em'}}>
+            {attempts===0?'No plays yet':`${attempts} attempt${attempts!==1?'s':''}`}
+            {won&&<span style={{color:'var(--green)',marginLeft:6}}>· Completed ✓</span>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+          {won&&<Badge color="green">Beaten</Badge>}
+          <Btn size="sm" onClick={()=>{setAddingPlay(a=>!a);setExpanded(true);}}>+ Play</Btn>
+          <button onClick={onRemove} style={{background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:13,padding:'0 2px'}}>×</button>
+        </div>
+        <span style={{fontSize:9,color:'var(--text-faint)'}}>{expanded?'▼':'▶'}</span>
+      </div>
+
+      {/* Play log for this scenario */}
+      {expanded && (
+        <div style={{padding:'0.75rem 1rem'}}>
+          {addingPlay && (
+            <ScenarioPlayForm scoreCols={scoreCols} onSave={addPlay} onCancel={()=>setAddingPlay(false)}/>
+          )}
+          {plays.length===0 && !addingPlay && (
+            <div style={{fontSize:11,color:'var(--text-faint)',fontStyle:'italic',padding:'0.25rem 0'}}>No plays logged yet — click "+ Play" to record an attempt</div>
+          )}
+          {[...plays].reverse().map((play, pi)=>(
+            <div key={play.id} style={{background:'var(--ink-2)',border:'1px solid var(--border)',borderLeft:`3px solid var(--${RC[play.result]||'text-faint'})`,borderRadius:'var(--r-sm)',padding:'0.75rem 0.875rem',marginTop:'0.5rem',position:'relative'}}>
+              <button onClick={()=>removePlay(play.id)} style={{position:'absolute',top:6,right:8,background:'none',border:'none',color:'var(--text-faint)',cursor:'pointer',fontSize:11}}>×</button>
+              {/* Play header */}
+              <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',marginBottom:4}}>
+                <Badge color={RC[play.result]||'gray'}>{RL[play.result]||play.result}</Badge>
+                {play.date&&<span style={{fontSize:10,color:'var(--text-faint)',letterSpacing:'0.08em'}}>{play.date}</span>}
+                {play.duration&&<span style={{fontSize:10,color:'var(--text-faint)'}}>· {play.duration} min</span>}
+              </div>
+              {/* Players */}
+              {play.players&&(
+                <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap',marginBottom:4}}>
+                  {play.players.split(',').map((p,i)=>(
+                    <span key={i} className={`player-chip ${play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?'winner':''}`}>
+                      {p.trim()}{play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?' ✦':''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Score chips */}
+              {play.scores && play.scoreColumns?.length > 0 && (
+                <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',marginBottom:play.notes?4:0}}>
+                  {play.scoreColumns.map(col=>(
+                    <div key={col} style={{background:'var(--ink-4)',border:'1px solid var(--border)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                      <span style={{fontSize:8,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>{col}</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scores[col]??0}</span>
+                    </div>
+                  ))}
+                  {play.scoreColumns.length>1&&(
+                    <div style={{background:'var(--gold-faint)',border:'1px solid var(--border-bright)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                      <span style={{fontSize:8,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--gold-dim)'}}>Total</span>
+                      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scoreColumns.reduce((s,c)=>s+(play.scores[c]||0),0)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {play.notes&&<div style={{fontSize:11,color:'var(--text-faint)',fontStyle:'italic',marginTop:2}}>{play.notes}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Campaign Detail ──────────────────────────────────────────────────────────
+function CampaignDetail({ campaign, games, onUpdate, onBack }) {
+  const g = games.find(x=>x.id===campaign.gameId)||{name:'Unknown'};
+  const scoreCols = Array.isArray(g.scoreColumns) ? g.scoreColumns : [];
+  const scenarios = campaign.scenarios || [];
+  const done = scenarios.filter(s=>s.completed||s.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length;
+  const total = scenarios.length;
+  const pct = total?Math.round(done/total*100):0;
+  const [showAddMod, setShowAddMod] = useState(false);
+  const [addingScenario, setAddingScenario] = useState(false);
+  const [scName, setScName] = useState('');
+
+  const updateMod = (id,u) => onUpdate({...campaign,modules:campaign.modules.map(m=>m.id===id?u:m)});
+  const removeMod = id => onUpdate({...campaign,modules:campaign.modules.filter(m=>m.id!==id)});
+  const addMod = m => onUpdate({...campaign,modules:[...(campaign.modules||[]),m]});
+
+  const addScenario = () => {
+    if(!scName.trim()) return;
+    onUpdate({...campaign, scenarios:[...scenarios,{id:uid(),name:scName.trim(),plays:[],completed:false}]});
+    setScName(''); setAddingScenario(false);
+  };
+  const updateScenario = (id, updated) => onUpdate({...campaign, scenarios:scenarios.map(s=>s.id===id?updated:s)});
+  const removeScenario = id => onUpdate({...campaign, scenarios:scenarios.filter(s=>s.id!==id)});
+
+  return (
+    <div className="fade-in">
+      <button className="back-link" onClick={onBack}>← Campaigns</button>
+      <div className="flex items-start justify-between gap-3 mb-4" style={{flexWrap:'wrap'}}>
+        <div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',fontWeight:300,letterSpacing:'0.03em',color:'var(--text)'}}>{campaign.name}</h2>
+          <div style={{fontSize:11,color:'var(--text-faint)',marginTop:4,letterSpacing:'0.08em'}}>{g.name}{campaign.players?' · '+campaign.players:''}{campaign.startDate?' · Est. '+campaign.startDate:''}</div>
+          {total>0&&<div className="flex items-center gap-2 mt-2" style={{maxWidth:260}}>
+            <div className="progress-track"><div className="progress-fill" style={{width:pct+'%'}}/></div>
+            <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:'0.1em',whiteSpace:'nowrap'}}>{done}/{total} scenarios · {pct}%</span>
+          </div>}
+        </div>
+        <Btn variant="primary" onClick={()=>setShowAddMod(true)}>+ Add Module</Btn>
+      </div>
+      {campaign.notes&&<div className="note-box">{campaign.notes}</div>}
+      {(campaign.modules||[]).map(mod=>(
+        <ModuleRenderer key={mod.id} mod={mod} campaign={campaign} onUpdate={u=>updateMod(mod.id,u)} onRemove={()=>removeMod(mod.id)}/>
+      ))}
+
+      {/* Scenarios */}
+      <div className="module-block">
+        <div className="module-header">
+          <span className="module-label">Scenarios / Encounters</span>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setAddingScenario(a=>!a)}>+ Add Scenario</button>
+        </div>
+        <div className="module-body">
+          {/* Add scenario */}
+          {addingScenario&&(
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.875rem',alignItems:'flex-end'}}>
+              <Inp label="Scenario name *" value={scName} onChange={e=>setScName(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&addScenario()}
+                placeholder="Passage Through Mirkwood…" className="flex-1"/>
+              <Btn size="sm" variant="primary" onClick={addScenario}>Add</Btn>
+              <Btn size="sm" onClick={()=>{setAddingScenario(false);setScName('');}}>Cancel</Btn>
+            </div>
+          )}
+          {scenarios.length===0&&!addingScenario&&(
+            <div style={{fontSize:11,color:'var(--text-faint)',padding:'0.25rem 0',fontStyle:'italic'}}>No scenarios yet — add your first encounter</div>
+          )}
+          {scenarios.map((s,i)=>(
+            <ScenarioBlock key={s.id||i} scenario={s} idx={i} scoreCols={scoreCols}
+              onUpdate={updated=>updateScenario(s.id,updated)}
+              onRemove={()=>removeScenario(s.id)}/>
+          ))}
+        </div>
+      </div>
+      {showAddMod&&<AddModuleModal onAdd={addMod} onClose={()=>setShowAddMod(false)}/>}
+    </div>
+  );
+}
+
+// ── Statistics ───────────────────────────────────────────────────────────────
+function Statistics({ plays, games, campaigns }) {
+  const hasAny = plays.length > 0 || campaigns.some(c=>(c.scenarios||[]).some(s=>(s.plays||[]).length>0));
+  if (!hasAny) return <div className="empty"><span className="empty-rune">◈</span>Log some plays to see your chronicles</div>;
+
+  // --- Collect ALL play durations: standalone plays + campaign scenario plays ---
+  // Flatten campaign scenario plays into a unified list for duration/time stats
+  const campaignPlays = campaigns.flatMap(c =>
+    (c.scenarios||[]).flatMap(sc =>
+      (sc.plays||[]).map(p => ({
+        ...p,
+        _source: 'campaign',
+        _campaignId: c.id,
+        _gameId: c.gameId,
+        _scenarioName: sc.name,
+      }))
+    )
+  );
+
+  // All plays combined (standalone + campaign) for time/hours stats
+  const allPlaysForTime = [...plays, ...campaignPlays];
+  const totalMins = allPlaysForTime.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+  const campaignMins = campaignPlays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+
+  // Standalone play stats
+  const wins = plays.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
+  const withDur = plays.filter(p=>p.duration);
+  const avgDur = withDur.length ? Math.round(withDur.reduce((s,p)=>s+parseInt(p.duration),0)/withDur.length) : 0;
+
+  // Longest single session (across all plays including campaign)
+  const longestPlay = allPlaysForTime.reduce((best, p) => {
+    const d = parseInt(p.duration)||0;
+    if (d > (parseInt(best?.duration)||0)) return p;
+    return best;
+  }, null);
+  const longestGame = longestPlay?._gameId
+    ? games.find(g=>g.id===longestPlay._gameId)
+    : games.find(g=>g.id===longestPlay?.gameId);
+
+  // Most played game (by play count, standalone plays)
+  const gamePlayCounts = {};
+  plays.forEach(p=>{ gamePlayCounts[p.gameId]=(gamePlayCounts[p.gameId]||0)+1; });
+  const mostPlayedId = Object.entries(gamePlayCounts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const mostPlayedGame = games.find(g=>g.id===mostPlayedId);
+  const mostPlayedCount = gamePlayCounts[mostPlayedId]||0;
+
+  // Most played game by time (standalone + campaign)
+  const gameTimeMins = {};
+  allPlaysForTime.forEach(p=>{
+    const gid = p._gameId||p.gameId;
+    gameTimeMins[gid]=(gameTimeMins[gid]||0)+(parseInt(p.duration)||0);
+  });
+  const mostTimeId = Object.entries(gameTimeMins).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const mostTimeGame = games.find(g=>g.id===mostTimeId);
+  const mostTimeMins = gameTimeMins[mostTimeId]||0;
+
+  // Win streak (standalone plays sorted by date)
+  const sortedPlays = [...plays].filter(p=>p.date).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let streak=0, bestStreak=0, cur=0;
+  sortedPlays.forEach(p=>{
+    if(p.result==='win'||p.result==='cooperative-win'){cur++;if(cur>bestStreak)bestStreak=cur;}
+    else cur=0;
+  });
+  // Current streak (from end)
+  for(let i=sortedPlays.length-1;i>=0;i--){
+    const r=sortedPlays[i].result;
+    if(r==='win'||r==='cooperative-win') streak++; else break;
+  }
+
+  // Per-game stats (standalone plays only for win rate accuracy)
+  const gameStats = games.map(g=>{
+    const gp=plays.filter(p=>p.gameId===g.id);
+    const gw=gp.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
+    // Include campaign play time for this game
+    const standaloneMins=gp.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+    const campMins=(gameTimeMins[g.id]||0)-standaloneMins; // extra from campaigns
+    const totalGameMins=(gameTimeMins[g.id]||0);
+    return {...g,count:gp.length,wins:gw,
+      winRate:gp.length?Math.round(gw/gp.length*100):0,
+      hours:(totalGameMins/60).toFixed(1)};
+  }).filter(g=>g.count>0||(gameTimeMins[g.id]||0)>0).sort((a,b)=>b.count-a.count);
+
+  // Monthly activity
+  const monthly={};
+  plays.forEach(p=>{if(p.date){const m=p.date.slice(0,7);monthly[m]=(monthly[m]||0)+1;}});
+  campaignPlays.forEach(p=>{if(p.date){const m=p.date.slice(0,7);monthly[m]=(monthly[m]||0)+1;}});
+  const monthKeys=Object.keys(monthly).sort().slice(-8);
+  const maxM=Math.max(...monthKeys.map(k=>monthly[k]),1);
+  // Best month
+  const bestMonth=monthKeys.length?monthKeys.reduce((b,k)=>monthly[k]>monthly[b]?k:b,monthKeys[0]):null;
+
+  // Player win leaderboard
+  const playerWins={};
+  plays.forEach(p=>{if(p.winner)playerWins[p.winner.trim()]=(playerWins[p.winner.trim()]||0)+1;});
+  const topPlayers=Object.entries(playerWins).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  // Campaign stats
+  const scenariosDone=campaigns.reduce((s,c)=>{
+    const done=(c.scenarios||[]).filter(sc=>sc.completed||sc.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length;
+    return s+done;
+  },0);
+  const totalAttempts=campaigns.reduce((s,c)=>s+(c.scenarios||[]).reduce((ss,sc)=>ss+(sc.plays?.length||0),0),0);
+  const scenarioWinRate=totalAttempts>0?Math.round(scenariosDone/totalAttempts*100):0;
+
+  return (
+    <div className="fade-in">
+      {/* Top stat cards */}
+      <div className="stat-grid">
+        <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{plays.length}</div><div className="stat-sub">+{campaignPlays.length} campaign</div></div>
+        <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(totalMins/60).toFixed(1)}</div><div className="stat-sub">{avgDur?`~${avgDur}min avg`:campaignMins?(campaignMins/60).toFixed(1)+'h campaigns':''}</div></div>
+        <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{plays.length?Math.round(wins/plays.length*100)+'%':'—'}</div><div className="stat-sub">{wins} of {plays.length}</div></div>
+        <div className="stat-card"><div className="stat-label">Unique Games</div><div className="stat-value">{new Set(plays.map(p=>p.gameId)).size}</div><div className="stat-sub">{games.length} in library</div></div>
+        <div className="stat-card"><div className="stat-label">Active Campaigns</div><div className="stat-value">{campaigns.filter(c=>c.status==='active').length}</div><div className="stat-sub">{campaigns.length} total</div></div>
+        <div className="stat-card"><div className="stat-label">Scenarios Beaten</div><div className="stat-value">{scenariosDone}</div><div className="stat-sub">{totalAttempts} attempts</div></div>
+      </div>
+
+      {/* Records row */}
+      <div className="section-label">Records & Highlights</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.625rem',marginBottom:'1.5rem'}}>
+        {mostPlayedGame&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Most Played</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{mostPlayedGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{mostPlayedCount} play{mostPlayedCount!==1?'s':''}</div>
+          </div>
+        )}
+        {mostTimeGame&&mostTimeMins>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Most Time Invested</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{mostTimeGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{(mostTimeMins/60).toFixed(1)}h total</div>
+          </div>
+        )}
+        {longestPlay&&longestGame&&parseInt(longestPlay.duration)>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Longest Session</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{longestGame.name}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{longestPlay.duration} min{longestPlay._scenarioName?` · ${longestPlay._scenarioName}`:longestPlay.scenario?` · ${longestPlay.scenario}`:''}</div>
+          </div>
+        )}
+        {bestStreak>1&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Best Win Streak</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',color:'var(--gold)',lineHeight:1,marginBottom:2}}>{bestStreak}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{streak>0?`current: ${streak}`:'streak ended'}</div>
+          </div>
+        )}
+        {bestMonth&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Best Month</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--text)',marginBottom:2}}>{new Date(bestMonth+'-01').toLocaleString('default',{month:'long',year:'numeric'})}</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{monthly[bestMonth]} play{monthly[bestMonth]!==1?'s':''}</div>
+          </div>
+        )}
+        {totalAttempts>0&&(
+          <div className="card" style={{padding:'0.875rem 1rem'}}>
+            <div style={{fontSize:9,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:6}}>Scenario Win Rate</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',color:'var(--gold)',lineHeight:1,marginBottom:2}}>{scenarioWinRate}%</div>
+            <div style={{fontSize:11,color:'var(--text-faint)'}}>{scenariosDone} beaten of {totalAttempts} attempts</div>
+          </div>
+        )}
+      </div>
+
+      {/* Monthly activity chart */}
+      {monthKeys.length>1&&<>
+        <div className="section-label">Activity (last 8 months)</div>
+        <div className="bar-chart mb-4">
+          {monthKeys.map(k=>(
+            <div key={k} className="bar-col">
+              <div className="bar-count">{monthly[k]}</div>
+              <div className="bar-fill" style={{height:`${Math.max(4,(monthly[k]/maxM)*52)}px`,opacity:0.4+0.6*(monthly[k]/maxM),background:k===bestMonth?'var(--gold)':undefined}}/>
+              <div className="bar-label">{k.slice(5)}/{k.slice(2,4)}</div>
+            </div>
+          ))}
+        </div>
+      </>}
+
+      {/* Per-game table */}
+      <div className="section-label">By Game</div>
+      <div className="overflow-x-auto mb-4">
+        <table className="stats-table">
+          <thead><tr><th>Game</th><th>Plays</th><th>Hours</th><th>Win Rate</th><th>Type</th></tr></thead>
+          <tbody>
+            {gameStats.map(g=>(
+              <tr key={g.id}>
+                <td>{g.name}</td>
+                <td>{g.count}</td>
+                <td>{g.hours}h</td>
+                <td>{g.count>0?g.winRate+'%':'—'}</td>
+                <td><Badge color={g.type==='campaign'?'purple':g.type==='cooperative'?'blue':'gray'}>{g.type}</Badge></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Encounter stats table */}
+      {(() => {
+        // Build encounter stats from all plays that have a scenario name
+        const encMap = {};
+        plays.filter(p=>p._scenarioName||p.scenario).forEach(p => {
+          const name = p._scenarioName||p.scenario;
+          const game = games.find(g=>g.id===p.gameId)?.name||'Unknown';
+          const key = name;
+          if(!encMap[key]) encMap[key]={name,game,attempts:0,wins:0,losses:0};
+          encMap[key].attempts++;
+          if(p.result==='win'||p.result==='cooperative-win') encMap[key].wins++;
+          if(p.result==='loss'||p.result==='cooperative-loss') encMap[key].losses++;
+        });
+        const encounters = Object.values(encMap).sort((a,b)=>b.attempts-a.attempts);
+        if(!encounters.length) return null;
+        return <>
+          <div className="section-label">Encounters &amp; Scenarios</div>
+          <div className="overflow-x-auto mb-4">
+            <table className="stats-table">
+              <thead><tr><th>Encounter</th><th>Game</th><th>Plays</th><th>Won</th><th>Lost</th><th>Win %</th></tr></thead>
+              <tbody>
+                {encounters.map(e=>(
+                  <tr key={e.name}>
+                    <td style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'0.95rem"'}}>{e.name}</td>
+                    <td>{e.game}</td>
+                    <td>{e.attempts}</td>
+                    <td style={{color:'var(--green)'}}>{e.wins}</td>
+                    <td style={{color:'var(--red)'}}>{e.losses}</td>
+                    <td>{e.attempts>0?Math.round(e.wins/e.attempts*100)+'%':'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>;
+      })()}
+        <div className="section-label">Champions</div>
+        <div style={{marginBottom:'1.5rem'}}>
+          {topPlayers.map(([name,w])=>(
+            <div key={name} className="leaderboard-row">
+              <span className="leaderboard-name">{name}</span>
+              <div className="leaderboard-bar"><div className="leaderboard-fill" style={{width:`${(w/topPlayers[0][1])*100}%`}}/></div>
+              <span className="leaderboard-val">{w} win{w!==1?'s':''}</span>
+            </div>
+          ))}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+// ── Play Card ────────────────────────────────────────────────────────────────
+function PlayCard({ play, games, campaigns, onDelete }) {
+  const g = games.find(x=>x.id===play.gameId)||{name:'Unknown',type:'standard'};
+  const campaign = play.campaignId ? campaigns?.find(c=>c.id===play.campaignId) : null;
+  const RC={win:'green',loss:'red','cooperative-win':'blue','cooperative-loss':'red',draw:'gray'};
+  const RL={win:'Victory',loss:'Defeat','cooperative-win':'Coop Win','cooperative-loss':'Coop Defeat',draw:'Draw'};
+  const hasScores = play.scores && play.scoreColumns?.length > 0;
+  const scenarioName = play._scenarioName || play.scenario;
+  const campaignName = play._campaignName || campaign?.name;
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <Badge color={RC[play.result]||'gray'}>{RL[play.result]||play.result}</Badge>
+            {(play._source==='campaign'||play._fromCampaign)&&<Badge color="purple">Campaign</Badge>}
+            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',fontWeight:400,color:'var(--text)'}}>{g.name}</span>
+          </div>
+          <div style={{fontSize:10,color:'var(--text-faint)',letterSpacing:'0.08em'}}>
+            {play.date}
+            {scenarioName&&<span style={{color:'var(--gold-dim)'}}> · {scenarioName}</span>}
+            {campaignName&&<span> · {campaignName}</span>}
+            {play.duration&&<span> · {play.duration} min</span>}
+          </div>
+          {play.players&&<div className="flex gap-1 flex-wrap mt-1">
+            {play.players.split(',').map((p,i)=>(
+              <span key={i} className={`player-chip ${play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?'winner':''}`}>
+                {p.trim()}{play.winner&&play.winner.trim().toLowerCase()===p.trim().toLowerCase()?' ✦':''}
+              </span>
+            ))}
+          </div>}
+          {hasScores && (
+            <div style={{marginTop:'0.625rem',display:'flex',flexWrap:'wrap',gap:'0.5rem'}}>
+              {play.scoreColumns.map(col=>(
+                <div key={col} style={{background:'var(--ink-3)',border:'1px solid var(--border)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                  <span style={{fontSize:8,letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-faint)'}}>{col}</span>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scores[col]??0}</span>
+                </div>
+              ))}
+              {play.scoreColumns.length>1&&(
+                <div style={{background:'var(--gold-faint)',border:'1px solid var(--border-bright)',borderRadius:'var(--r-sm)',padding:'0.2rem 0.6rem',display:'flex',flexDirection:'column',alignItems:'center',minWidth:52}}>
+                  <span style={{fontSize:8,letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--gold-dim)'}}>Total</span>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1rem',color:'var(--gold)',lineHeight:1.2}}>{play.scoreColumns.reduce((s,c)=>s+(play.scores[c]||0),0)}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {play.notes&&<div style={{fontSize:11,color:'var(--text-faint)',marginTop:4,fontStyle:'italic'}}>{play.notes}</div>}
+        </div>
+        {onDelete&&<Btn size="sm" variant="danger" onClick={onDelete}>Remove</Btn>}
+      </div>
+    </div>
+  );
+}
+
+// ── Modals ───────────────────────────────────────────────────────────────────
+function LogPlayModal({ games, campaigns, onSave, onClose }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [f, setF] = useState({gameId:games[0]?.id||'',date:today,result:'win',players:'',winner:'',duration:'',scenario:'',campaignId:'',notes:''});
+  const [scores, setScores] = useState({});
+  const U = (k,v) => setF(p=>({...p,[k]:v}));
+
+  const selectedGame = games.find(g=>g.id===f.gameId);
+  const scoreCols = Array.isArray(selectedGame?.scoreColumns) ? selectedGame.scoreColumns : [];
+
+  // Campaigns for the selected game
+  const linkedCampaigns = campaigns.filter(c=>c.gameId===f.gameId&&c.status==='active');
+
+  const setScore = (col, val) => setScores(s=>({...s,[col]:val}));
+
+  const handleSave = () => {
+    if(!f.gameId) return;
+    const scoreData = scoreCols.length > 0 ? scoreCols.reduce((acc,col)=>({...acc,[col]:parseFloat(scores[col])||0}),{}) : null;
+    onSave({id:uid(),...f,scores:scoreData,scoreColumns:scoreCols.length>0?scoreCols:undefined});
+    onClose();
+  };
+
+  return (
+    <Modal title="Record a Play" onClose={onClose}>
+      <div className="form-grid">
+        <Sel label="Game *" value={f.gameId} onChange={e=>{U('gameId',e.target.value);setScores({});U('campaignId','');}} className="col-span-2">
+          {games.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+          {!games.length&&<option value="">Add a game first</option>}
+        </Sel>
+        <Inp label="Date" type="date" value={f.date} onChange={e=>U('date',e.target.value)}/>
+        <Sel label="Outcome" value={f.result} onChange={e=>U('result',e.target.value)}>
+          <option value="win">Victory</option><option value="loss">Defeat</option>
+          <option value="cooperative-win">Cooperative Win</option><option value="cooperative-loss">Cooperative Loss</option>
+          <option value="draw">Draw</option>
+        </Sel>
+        <Inp label="Players (comma separated)" value={f.players} onChange={e=>U('players',e.target.value)} placeholder="Alice, Bob…" className="col-span-2"/>
+        <Inp label="Victor" value={f.winner} onChange={e=>U('winner',e.target.value)} placeholder="Alice…"/>
+        <Inp label="Duration (min)" type="number" value={f.duration} onChange={e=>U('duration',e.target.value)} placeholder="90"/>
+        <Inp label="Scenario / encounter" value={f.scenario} onChange={e=>U('scenario',e.target.value)} placeholder="Passage Through Mirkwood…" className="col-span-2"/>
+
+        {/* Campaign link */}
+        {linkedCampaigns.length > 0 && (
+          <Sel label="Link to campaign (optional)" value={f.campaignId} onChange={e=>U('campaignId',e.target.value)} className="col-span-2">
+            <option value="">— Standalone play —</option>
+            {linkedCampaigns.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </Sel>
+        )}
+
+        <Inp label="Notes" value={f.notes} onChange={e=>U('notes',e.target.value)} placeholder="How the battle unfolded…" className="col-span-2"/>
+      </div>
+
+      {/* Score sheet — only shown if game has score columns */}
+      {scoreCols.length > 0 && (
+        <div style={{marginTop:'1.25rem'}}>
+          <div style={{fontSize:9,letterSpacing:'0.2em',textTransform:'uppercase',color:'var(--gold-dim)',marginBottom:'0.75rem',display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            Encounter Score Sheet
+            <span style={{flex:1,height:1,background:'var(--border)',display:'block'}}/>
+          </div>
+          <div style={{background:'var(--ink-3)',border:'1px solid var(--border)',borderRadius:'var(--r-sm)',padding:'0.875rem 1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:'0.75rem'}}>
+              {scoreCols.map(col=>(
+                <div key={col} className="form-group">
+                  <label className="form-label">{col}</label>
+                  <input className="form-input" type="number" value={scores[col]||''} onChange={e=>setScore(col,e.target.value)} placeholder="0" style={{textAlign:'center'}}/>
+                </div>
+              ))}
+            </div>
+            {scoreCols.length > 1 && (
+              <div style={{marginTop:'0.625rem',paddingTop:'0.625rem',borderTop:'1px solid var(--border)',display:'flex',justifyContent:'flex-end',gap:'0.75rem'}}>
+                <span style={{fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-faint)'}}>Total</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',color:'var(--gold)'}}>
+                  {scoreCols.reduce((s,col)=>s+(parseFloat(scores[col])||0),0)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-4" style={{justifyContent:'flex-end'}}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" onClick={handleSave}>Record Play</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function AddGameModal({ onSave, onClose }) {
+  const [f, setF] = useState({name:'',type:'standard',minPlayers:'',maxPlayers:'',duration:'',scoreColumns:'',notes:''});
+  const U = (k,v) => setF(p=>({...p,[k]:v}));
+
+  // Quick-fill presets
+  const SCORE_PRESETS = [
+    {label:'LotR LCG', cols:'Score, Threat, Boons, Burdens, Side Quests'},
+    {label:'Arkham Horror', cols:'Score, Doom, Clues'},
+    {label:'Pandemic', cols:'Outbreaks, Funded Rate'},
+    {label:'Custom…', cols:''},
+  ];
+
+  return (
+    <Modal title="Add to Library" onClose={onClose}>
+      <div className="form-grid">
+        <Inp label="Game name *" value={f.name} onChange={e=>U('name',e.target.value)} placeholder="Lord of the Rings LCG…" className="col-span-2"/>
+        <Sel label="Type" value={f.type} onChange={e=>U('type',e.target.value)}>
+          <option value="standard">Standard</option><option value="cooperative">Cooperative</option><option value="campaign">Campaign</option>
+        </Sel>
+        <Inp label="Duration (min)" type="number" value={f.duration} onChange={e=>U('duration',e.target.value)} placeholder="60"/>
+        <Inp label="Min players" type="number" value={f.minPlayers} onChange={e=>U('minPlayers',e.target.value)}/>
+        <Inp label="Max players" type="number" value={f.maxPlayers} onChange={e=>U('maxPlayers',e.target.value)}/>
+        <div className="form-group col-span-2">
+          <label className="form-label">Score tracking columns</label>
+          <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap',marginBottom:'0.4rem'}}>
+            {SCORE_PRESETS.map(p=>(
+              <button key={p.label} onClick={()=>p.cols&&U('scoreColumns',p.cols)}
+                style={{fontSize:9,letterSpacing:'0.1em',textTransform:'uppercase',padding:'0.15rem 0.5rem',border:'1px solid var(--border-bright)',borderRadius:2,background:'transparent',color:'var(--text-faint)',cursor:'pointer',fontFamily:"'DM Mono',monospace",transition:'all 0.15s'}}
+                onMouseEnter={e=>{e.target.style.color='var(--gold)';e.target.style.borderColor='var(--gold-dim)';}}
+                onMouseLeave={e=>{e.target.style.color='var(--text-faint)';e.target.style.borderColor='var(--border-bright)';}}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <input className="form-input" value={f.scoreColumns} onChange={e=>U('scoreColumns',e.target.value)} placeholder="Score, Threat, Boons, Burdens… (comma separated, optional)"/>
+          <div style={{fontSize:9,color:'var(--text-faint)',marginTop:3,letterSpacing:'0.05em'}}>These columns will appear as a score sheet every time you log a play of this game.</div>
+        </div>
+        <Inp label="Notes" value={f.notes} onChange={e=>U('notes',e.target.value)} placeholder="Optional…" className="col-span-2"/>
+      </div>
+      <div className="flex gap-2 mt-4" style={{justifyContent:'flex-end'}}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" onClick={()=>{if(f.name){onSave({id:uid(),...f,scoreColumns:f.scoreColumns.split(',').map(s=>s.trim()).filter(Boolean)});onClose();}}}>Add to Library</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function AddCampaignModal({ games, onSave, onClose }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [f, setF] = useState({name:'',gameId:games[0]?.id||'',players:'',startDate:today,status:'active',notes:''});
+  const U = (k,v) => setF(p=>({...p,[k]:v}));
+  return (
+    <Modal title="Begin a Campaign" onClose={onClose}>
+      <div className="form-grid">
+        <Inp label="Campaign name *" value={f.name} onChange={e=>U('name',e.target.value)} placeholder="The Fellowship's Journey…" className="col-span-2"/>
+        <Sel label="Game *" value={f.gameId} onChange={e=>U('gameId',e.target.value)} className="col-span-2">
+          {games.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+        </Sel>
+        <Inp label="Players (comma separated)" value={f.players} onChange={e=>U('players',e.target.value)} placeholder="Alice, Bob…" className="col-span-2"/>
+        <Inp label="Date founded" type="date" value={f.startDate} onChange={e=>U('startDate',e.target.value)}/>
+        <Sel label="Status" value={f.status} onChange={e=>U('status',e.target.value)}>
+          <option value="active">Active</option><option value="paused">Paused</option>
+        </Sel>
+        <Txta label="Chronicle so far" value={f.notes} onChange={e=>U('notes',e.target.value)} className="col-span-2"/>
+      </div>
+      <p style={{fontSize:10,color:'var(--text-faint)',marginTop:'0.75rem',letterSpacing:'0.05em'}}>Open the campaign after creating to add custom tracking modules.</p>
+      <div className="flex gap-2 mt-4" style={{justifyContent:'flex-end'}}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" onClick={()=>{if(f.name&&f.gameId){onSave({id:uid(),...f,scenarios:[],modules:[]});onClose();}}}>Begin Campaign</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const [data, setData] = useState(EMPTY);
+  const [tab, setTab] = useState('dashboard');
+  const [modal, setModal] = useState(null);
+  const [playFilter, setPlayFilter] = useState('all');
+  const [activeCampaign, setActiveCampaign] = useState(null);
+
+  useEffect(()=>{ const saved=loadData(); if(saved) setData(saved); },[]);
+  const update = useCallback(next=>{ setData(next); saveData(next); },[]);
+  const { games, plays, campaigns } = data;
+
+  // ── Helper: flatten ALL plays including campaign scenario plays ──────────
+  // Returns unified play objects with _source, _campaignId, _scenarioName
+  const allPlays = [
+    ...plays,
+    ...campaigns.flatMap(c =>
+      (c.scenarios||[]).flatMap(sc =>
+        (sc.plays||[]).map(p => ({
+          ...p,
+          _source: 'campaign',
+          _campaignId: c.id,
+          _campaignName: c.name,
+          _scenarioName: sc.name,
+          // Use campaign's gameId if play doesn't have one
+          gameId: p.gameId || c.gameId,
+        }))
+      )
+    )
+  ];
+
+  const addGame = g => update({...data,games:[...games,g]});
+
+  const addPlay = p => {
+    // Also sync to campaign if linked
+    let updatedCampaigns = campaigns;
+    if (p.campaignId && p.scenario) {
+      updatedCampaigns = campaigns.map(c => {
+        if (c.id !== p.campaignId) return c;
+        const existing = (c.scenarios||[]).findIndex(s => s.name === p.scenario);
+        const scEntry = {
+          id: existing >= 0 ? c.scenarios[existing].id : uid(),
+          name: p.scenario,
+          result: p.result === 'win' || p.result === 'cooperative-win' ? 'win' : 'loss',
+          date: p.date, notes: p.notes||'',
+          completed: p.result==='win'||p.result==='cooperative-win'||p.result==='loss'||p.result==='cooperative-loss',
+          scores: p.scores||null, scoreColumns: p.scoreColumns||null, playId: p.id,
+        };
+        const newScenarios = existing >= 0
+          ? c.scenarios.map((s,i) => i===existing ? scEntry : s)
+          : [...(c.scenarios||[]), scEntry];
+        return {...c, scenarios: newScenarios};
+      });
+    }
+    update({...data, plays:[...plays,p], campaigns: updatedCampaigns});
+  };
+
+  // When a campaign scenario play is added from CampaignDetail,
+  // also push it into the top-level plays array so play log is complete
+  const addCampaignPlay = (campaignId, scenarioName, play, gameId) => {
+    const playEntry = {
+      ...play,
+      id: play.id || uid(),
+      gameId: gameId,
+      scenario: scenarioName,
+      campaignId: campaignId,
+      _fromCampaign: true,
+    };
+    // Update both: push to plays[], and update campaign scenario
+    const updatedCampaigns = campaigns.map(c => {
+      if (c.id !== campaignId) return c;
+      const newScenarios = (c.scenarios||[]).map(sc => {
+        if (sc.name !== scenarioName) return sc;
+        return {...sc, plays: [...(sc.plays||[]), play]};
+      });
+      return {...c, scenarios: newScenarios};
+    });
+    update({...data, plays:[...plays, playEntry], campaigns: updatedCampaigns});
+  };
+
+  const addCampaign = c => update({...data,campaigns:[...campaigns,c]});
+  const deletePlay = id => {
+    // Remove from top-level plays AND from any campaign scenario plays
+    const updatedCampaigns = campaigns.map(c => ({
+      ...c,
+      scenarios: (c.scenarios||[]).map(sc => ({
+        ...sc,
+        plays: (sc.plays||[]).filter(p => p.id !== id)
+      }))
+    }));
+    update({...data, plays:plays.filter(p=>p.id!==id), campaigns: updatedCampaigns});
+  };
+  const deleteGame = id => update({...data,games:games.filter(g=>g.id!==id)});
+  const deleteCampaign = id => update({...data,campaigns:campaigns.filter(c=>c.id!==id)});
+  const updateCampaign = (c, extraPlay) => {
+    // If a new scenario play was added, also log it to top-level plays
+    if (extraPlay) {
+      update({
+        ...data,
+        plays: [...plays, extraPlay],
+        campaigns: campaigns.map(x=>x.id===c.id?c:x)
+      });
+    } else {
+      update({...data,campaigns:campaigns.map(x=>x.id===c.id?c:x)});
+    }
+  };
+
+  const TABS = ['dashboard','plays','campaigns','games','stats'];
+  const LABELS = {dashboard:'Dashboard',plays:'Play Log',campaigns:'Campaigns',games:'Library',stats:'Statistics'};
+
+  // Dashboard stats use allPlays
+  const allWins = allPlays.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
+  const allTotalMins = allPlays.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+  const recentPlays = [...allPlays].filter(p=>p.date).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  const filteredPlays = playFilter==='all'
+    ? allPlays
+    : allPlays.filter(p=>games.find(g=>g.id===p.gameId)?.name===playFilter);
+
+  if(activeCampaign) {
+    const c = campaigns.find(x=>x.id===activeCampaign);
+    if(c) return (
+      <div>
+        <div className="site-header">
+          <div className="site-title"><span className="rune">⬡</span> Chronicle</div>
+          <div className="site-subtitle">Boardgame Tracker</div>
+        </div>
+        <CampaignDetail campaign={c} games={games} onUpdate={updateCampaign} onBack={()=>setActiveCampaign(null)}/>
+        <nav className="bottom-nav">
+          {[
+            {id:'dashboard', icon:'⬡', label:'Home'},
+            {id:'plays',     icon:'📜', label:'Plays'},
+            {id:'campaigns', icon:'⚔️', label:'Campaigns'},
+            {id:'games',     icon:'♟', label:'Library'},
+            {id:'stats',     icon:'◈', label:'Stats'},
+          ].map(t=>(
+            <button key={t.id} className={`bnav-btn${t.id==='campaigns'?' active':''}`}
+              onClick={()=>{ setActiveCampaign(null); setTab(t.id); }}>
+              <span className="bnav-icon">{t.icon}</span>
+              <span className="bnav-label">{t.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="site-header">
+        <div className="site-title"><span className="rune">⬡</span> Chronicle</div>
+        <div className="site-subtitle">Boardgame Tracker</div>
+      </div>
+
+      <div className="tabs">
+        {TABS.map(t=>(
+          <button key={t} className={`tab-btn ${tab===t?'active':''}`} onClick={()=>setTab(t)}>{LABELS[t]}</button>
+        ))}
+      </div>
+
+      {tab==='dashboard'&&<div className="fade-in">
+        <div className="stat-grid">
+          <div className="stat-card"><div className="stat-label">Total Plays</div><div className="stat-value">{allPlays.length}</div><div className="stat-sub">{plays.length} standalone · {allPlays.length-plays.length} campaign</div></div>
+          <div className="stat-card"><div className="stat-label">Hours Played</div><div className="stat-value">{(allTotalMins/60).toFixed(1)}</div></div>
+          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{allPlays.length?Math.round(allWins/allPlays.length*100)+'%':'—'}</div></div>
+          <div className="stat-card"><div className="stat-label">Active Quests</div><div className="stat-value">{campaigns.filter(c=>c.status==='active').length}</div></div>
+        </div>
+        <div className="section-header">
+          <span className="section-label" style={{marginBottom:0}}>Recent Plays</span>
+          <Btn variant="primary" onClick={()=>setModal('play')}>+ Record Play</Btn>
+        </div>
+        <div style={{marginTop:'0.875rem'}}>
+          {recentPlays.length?recentPlays.map(p=><PlayCard key={p.id} play={p} games={games} campaigns={campaigns}/>):<div className="empty"><span className="empty-rune">◈</span>No plays recorded yet — begin your chronicle</div>}
+        </div>
+      </div>}
+
+      {tab==='plays'&&<div className="fade-in">
+        <div className="section-header">
+          <div className="section-title">Play Log</div>
+          <Btn variant="primary" onClick={()=>setModal('play')}>+ Record Play</Btn>
+        </div>
+        <div className="filter-row">
+          {['all',...new Set(allPlays.map(p=>games.find(g=>g.id===p.gameId)?.name).filter(Boolean))].map(f=>(
+            <button key={f} className={`filter-pill ${playFilter===f?'active':''}`} onClick={()=>setPlayFilter(f)}>{f==='all'?'All Games':f}</button>
+          ))}
+        </div>
+        {[...filteredPlays].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(p=><PlayCard key={p.id} play={p} games={games} campaigns={campaigns} onDelete={p._source!=='campaign'?()=>deletePlay(p.id):undefined}/>)}
+        {!filteredPlays.length&&<div className="empty"><span className="empty-rune">◈</span>No plays logged yet</div>}
+      </div>}
+
+      {tab==='campaigns'&&<div className="fade-in">
+        <div className="section-header">
+          <div className="section-title">Campaigns</div>
+          <Btn variant="primary" onClick={()=>setModal('campaign')}>+ New Campaign</Btn>
+        </div>
+        {!campaigns.length&&<div className="empty"><span className="empty-rune">◈</span>No campaigns yet — begin your epic</div>}
+        {campaigns.map(c=>{
+          const g=games.find(x=>x.id===c.gameId)||{name:'Unknown'};
+          const done=c.scenarios?.filter(s=>s.completed||s.plays?.some(p=>p.result==='win'||p.result==='cooperative-win')).length||0;
+          const total=c.scenarios?.length||0;
+          const pct=total?Math.round(done/total*100):0;
+          const mods=c.modules||[];
+          return (
+            <div key={c.id} className="card card-campaign" style={{cursor:'pointer'}} onClick={()=>setActiveCampaign(c.id)}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.15rem',fontWeight:400,color:'var(--text)'}}>{c.name}</span>
+                    <Badge color={c.status==='active'?'gold':c.status==='completed'?'green':'gray'}>{c.status}</Badge>
+                  </div>
+                  <div style={{fontSize:10,color:'var(--text-faint)',marginTop:3,letterSpacing:'0.08em'}}>{g.name}{c.players?' · '+c.players:''}</div>
+                  {total>0&&<div className="flex items-center gap-2 mt-2" style={{maxWidth:200}}>
+                    <div className="progress-track"><div className="progress-fill" style={{width:pct+'%'}}/></div>
+                    <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:'0.1em'}}>{done}/{total}</span>
+                  </div>}
+                  {mods.length>0&&<div style={{fontSize:9,marginTop:6,letterSpacing:'0.08em'}}>
+                    <span style={{color:'var(--text-faint)'}}>{mods.length} module{mods.length!==1?'s':''}: </span>
+                    <span style={{color:'var(--gold-dim)'}}>{mods.map(m=>m.label).join(', ')}</span>
+                  </div>}
+                </div>
+                <div className="flex gap-2 flex-shrink-0" onClick={e=>e.stopPropagation()}>
+                  <Btn size="sm" onClick={()=>setActiveCampaign(c.id)}>Open</Btn>
+                  <Btn size="sm" variant="danger" onClick={()=>deleteCampaign(c.id)}>Remove</Btn>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>}
+
+      {tab==='games'&&<div className="fade-in">
+        <div className="section-header">
+          <div className="section-title">Library</div>
+          <Btn variant="primary" onClick={()=>setModal('game')}>+ Add Game</Btn>
+        </div>
+        {!games.length&&<div className="empty"><span className="empty-rune">◈</span>Your library awaits</div>}
+        {games.map(g=>{
+          const gp=allPlays.filter(p=>p.gameId===g.id);
+          const gw=gp.filter(p=>p.result==='win'||p.result==='cooperative-win').length;
+          const gMins=gp.reduce((s,p)=>s+(parseInt(p.duration)||0),0);
+          return (
+            <div key={g.id} className="card">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'1.1rem',fontWeight:400,color:'var(--text)'}}>{g.name}</span>
+                    {g.type==='campaign'&&<Badge color="purple">Campaign</Badge>}
+                    {g.type==='cooperative'&&<Badge color="blue">Coop</Badge>}
+                  </div>
+                  <div style={{fontSize:10,color:'var(--text-faint)',marginTop:3,letterSpacing:'0.08em'}}>
+                    {gp.length} play{gp.length!==1?'s':''}
+                    {gp.length?` · ${Math.round(gw/gp.length*100)}% win rate`:''}
+                    {gMins?` · ${(gMins/60).toFixed(1)}h`:''}
+                    {g.minPlayers?` · ${g.minPlayers}${g.maxPlayers&&g.maxPlayers!==g.minPlayers?'–'+g.maxPlayers:''}p`:''}
+                    {g.duration?` · ~${g.duration}min`:''}
+                  </div>
+                  {g.notes&&<div style={{fontSize:11,color:'var(--text-faint)',marginTop:4,fontStyle:'italic'}}>{g.notes}</div>}
+                </div>
+                <Btn size="sm" variant="danger" onClick={()=>deleteGame(g.id)}>Remove</Btn>
+              </div>
+            </div>
+          );
+        })}
+      </div>}
+
+      {tab==='stats'&&<Statistics plays={allPlays} games={games} campaigns={campaigns}/>}
+
+      {modal==='play'&&<LogPlayModal games={games} campaigns={campaigns} onSave={addPlay} onClose={()=>setModal(null)}/>}
+      {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
+      {modal==='campaign'&&<AddCampaignModal games={games} onSave={addCampaign} onClose={()=>setModal(null)}/>}
+
+      {/* Mobile FAB — log a play */}
+      <button className="fab" onClick={()=>setModal('play')}>✦</button>
+
+      {/* Mobile bottom nav */}
+      <nav className="bottom-nav">
+        {[
+          {id:'dashboard', icon:'⬡', label:'Home'},
+          {id:'plays',     icon:'📜', label:'Plays'},
+          {id:'campaigns', icon:'⚔️', label:'Campaigns'},
+          {id:'games',     icon:'♟', label:'Library'},
+          {id:'stats',     icon:'◈', label:'Stats'},
+        ].map(t=>(
+          <button key={t.id} className={`bnav-btn${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>
+            <span className="bnav-icon">{t.icon}</span>
+            <span className="bnav-label">{t.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
