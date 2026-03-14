@@ -2041,8 +2041,11 @@ function App() {
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
       {modal==='campaign'&&<AddCampaignModal games={games} onSave={addCampaign} onClose={()=>setModal(null)}/>}
 
-      {/* Mobile FAB — log a play */}
-      <button className="fab" onClick={()=>setModal('play')}>✦</button>
+      {/* Mobile FAB — action changes per tab */}
+      {tab==='dashboard'&&<button className="fab" onClick={()=>setModal('play')}>✦</button>}
+      {tab==='plays'&&<button className="fab" onClick={()=>setModal('play')}>✦</button>}
+      {tab==='campaigns'&&<button className="fab" onClick={()=>setModal('campaign')}>✦</button>}
+      {tab==='games'&&<button className="fab" onClick={()=>setModal('game')}>✦</button>}
 
       {/* Mobile bottom nav */}
       <nav className="bottom-nav">
