@@ -831,6 +831,69 @@ h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 400; letter-
   .score-table input[type="number"] { width: 60px; }
   .back-link { margin-bottom: 1.5rem; }
 }
+
+/* ── Wide desktop (1024px+) — fills the browser ──────────────────────────── */
+@media (min-width: 1024px) {
+  #root { max-width: 100%; padding: 0 2.5rem 3rem; }
+
+  .desktop-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+  .desktop-sidebar {
+    position: sticky;
+    top: 1.5rem;
+  }
+  .desktop-main { min-width: 0; }
+
+  /* Wider stat grid */
+  .stat-grid { grid-template-columns: repeat(3, 1fr); }
+
+  /* Header becomes horizontal bar */
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0 1.25rem;
+    margin-bottom: 2rem;
+  }
+
+  /* Tabs become a vertical sidebar nav */
+  .tabs {
+    flex-direction: column;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    gap: 0;
+    overflow-x: visible;
+    margin-bottom: 0;
+    padding-right: 0;
+  }
+  .tab-btn {
+    text-align: left;
+    padding: 0.7rem 1rem;
+    border-bottom: none;
+    border-right: 2px solid transparent;
+    margin-bottom: 0;
+    margin-right: -1px;
+    border-radius: var(--r-sm) 0 0 var(--r-sm);
+    width: 100%;
+  }
+  .tab-btn.active {
+    border-bottom-color: transparent;
+    border-right-color: var(--gold);
+    background: var(--gold-faint);
+  }
+
+  /* Wider form grids */
+  .form-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .col-span-2 { grid-column: 1 / -1; }
+
+  /* Bigger cards on desktop */
+  .card { padding: 1.25rem 1.5rem; }
+  .stat-card { padding: 1.25rem; }
+}
 </style>
 </head>
 <body>
@@ -2031,11 +2094,15 @@ function App() {
         <div className="site-subtitle">Boardgame Tracker</div>
       </div>
 
-      <div className="tabs">
-        {TABS.map(t=>(
-          <button key={t} className={`tab-btn ${tab===t?'active':''}`} onClick={()=>setTab(t)}>{LABELS[t]}</button>
-        ))}
-      </div>
+      <div className="desktop-layout">
+        <div className="desktop-sidebar">
+          <div className="tabs">
+            {TABS.map(t=>(
+              <button key={t} className={`tab-btn ${tab===t?'active':''}`} onClick={()=>setTab(t)}>{LABELS[t]}</button>
+            ))}
+          </div>
+        </div>
+        <div className="desktop-main">
 
       {tab==='dashboard'&&<div className="fade-in">
         <div className="stat-grid">
@@ -2159,6 +2226,9 @@ function App() {
       {syncing&&<div className="sync-dot" title="Saving…"/>}
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
       {modal==='campaign'&&<AddCampaignModal games={games} onSave={addCampaign} onClose={()=>setModal(null)}/>}
+
+      </div>{/* desktop-main */}
+      </div>{/* desktop-layout */}
 
       {/* Mobile FAB — action changes per tab */}
       {tab==='dashboard'&&<button className="fab" onClick={()=>setModal('play')}>✦</button>}
