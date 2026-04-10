@@ -1872,6 +1872,33 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
+  const importData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (!parsed.games || !parsed.plays || !parsed.campaigns) {
+            alert('Invalid backup file — missing games, plays or campaigns.');
+            return;
+          }
+          if (!window.confirm('This will replace ALL your current Chronicle data with the backup. Are you sure?')) return;
+          update(parsed);
+          alert('Import successful! ' + parsed.games.length + ' games, ' + parsed.plays.length + ' plays, ' + parsed.campaigns.length + ' campaigns loaded.');
+        } catch {
+          alert('Could not read file — make sure it is a valid Chronicle backup.');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   const addGame = g => update({...data,games:[...games,g]});
 
   const addPlay = p => {
@@ -2122,7 +2149,10 @@ function App() {
           <p style={{fontSize:11,color:'var(--text-faint)',marginBottom:'0.875rem',lineHeight:1.6}}>
             Export your Chronicle data as a backup file. You can use this to migrate to cloud storage or restore on another device.
           </p>
-          <Btn variant="primary" onClick={exportData}>⬇ Export My Data</Btn>
+          <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
+            <Btn variant="primary" onClick={exportData}>⬇ Export My Data</Btn>
+            <Btn onClick={importData}>⬆ Import Backup</Btn>
+          </div>
         </div>
       </div>}
 
