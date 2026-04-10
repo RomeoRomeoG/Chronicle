@@ -1802,6 +1802,18 @@ function App() {
     )
   ];
 
+  const exportData = () => {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) { alert('No data found to export.'); return; }
+    const blob = new Blob([raw], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chronicle-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const addGame = g => update({...data,games:[...games,g]});
 
   const addPlay = p => {
@@ -2035,7 +2047,16 @@ function App() {
         })}
       </div>}
 
-      {tab==='stats'&&<Statistics plays={allPlays} games={games} campaigns={campaigns}/>}
+      {tab==='stats'&&<div>
+        <Statistics plays={allPlays} games={games} campaigns={campaigns}/>
+        <div style={{marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid var(--border)'}}>
+          <div className="section-label">Data</div>
+          <p style={{fontSize:11,color:'var(--text-faint)',marginBottom:'0.875rem',lineHeight:1.6}}>
+            Export your Chronicle data as a backup file. You can use this to migrate to cloud storage or restore on another device.
+          </p>
+          <Btn variant="primary" onClick={exportData}>⬇ Export My Data</Btn>
+        </div>
+      </div>}
 
       {modal==='play'&&<LogPlayModal games={games} campaigns={campaigns} onSave={addPlay} onClose={()=>setModal(null)}/>}
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
