@@ -693,6 +693,14 @@ h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 400; letter-
 /* Animations */
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .fade-in { animation: fadeIn 0.2s ease; }
+@keyframes loadbar { 0%{width:0;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0;margin-left:100%} }
+.sync-dot {
+  position: fixed; top: 0.75rem; right: 0.75rem;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 6px var(--gold);
+  z-index: 200; animation: pulse 1s ease infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
 /* ── Bottom Nav (mobile) ─────────────────────────────────────────────────── */
 .bottom-nav {
@@ -831,8 +839,45 @@ h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 400; letter-
 const { useState, useEffect, useCallback } = React;
 
 const STORE_KEY = "bgtracker-v3";
-function loadData() { try { const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
-function saveData(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
+const SUPA_URL = 'https://xinmcvrwyoyiwaeaqiww.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhpbm1jdnJ3eW95aXdhZWFxaXd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0NjYyOTgsImV4cCI6MjA4OTA0MjI5OH0.c8CVcQKmqjo5I-mcZHFyMl1nBQUtjLBbAjXXPdblmEc';
+const RECORD_ID = 'chronicle-main';
+
+// Load: Supabase first, fall back to localStorage
+async function loadData() {
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/chronicle?id=eq.${RECORD_ID}&select=data`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    const rows = await res.json();
+    if (rows && rows.length > 0 && rows[0].data) {
+      // Cache to localStorage for offline
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(rows[0].data)); } catch {}
+      return rows[0].data;
+    }
+  } catch {}
+  // Fall back to localStorage (offline or first load)
+  try { const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+
+// Save: both Supabase and localStorage
+async function saveData(d) {
+  // Always save locally first (instant, works offline)
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {}
+  // Then sync to Supabase
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/chronicle`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({ id: RECORD_ID, data: d, updated_at: new Date().toISOString() })
+    });
+  } catch {}
+}
 const EMPTY = { games: [], plays: [], campaigns: [] };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 
@@ -1778,9 +1823,22 @@ function App() {
   const [modal, setModal] = useState(null);
   const [playFilter, setPlayFilter] = useState('all');
   const [activeCampaign, setActiveCampaign] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(()=>{ const saved=loadData(); if(saved) setData(saved); },[]);
-  const update = useCallback(next=>{ setData(next); saveData(next); },[]);
+  useEffect(()=>{
+    (async () => {
+      const saved = await loadData();
+      if (saved) setData(saved);
+      setLoaded(true);
+    })();
+  }, []);
+
+  const update = useCallback(next => {
+    setData(next);
+    setSyncing(true);
+    saveData(next).then(()=>setSyncing(false)).catch(()=>setSyncing(false));
+  }, []);
   const { games, plays, campaigns } = data;
 
   // ── Helper: flatten ALL plays including campaign scenario plays ──────────
@@ -1900,6 +1958,16 @@ function App() {
   const filteredPlays = playFilter==='all'
     ? allPlays
     : allPlays.filter(p=>games.find(g=>g.id===p.gameId)?.name===playFilter);
+
+  if (!loaded) return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'60vh',gap:'1rem'}}>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:'2rem',color:'var(--gold)',letterSpacing:'0.12em'}}>Chronicle</div>
+      <div style={{fontSize:10,color:'var(--text-faint)',letterSpacing:'0.2em',textTransform:'uppercase'}}>Loading your chronicle…</div>
+      <div style={{width:120,height:2,background:'var(--border)',borderRadius:1,overflow:'hidden',marginTop:4}}>
+        <div style={{height:'100%',background:'var(--gold)',borderRadius:1,animation:'loadbar 1.2s ease infinite'}}/>
+      </div>
+    </div>
+  );
 
   if(activeCampaign) {
     const c = campaigns.find(x=>x.id===activeCampaign);
@@ -2058,7 +2126,7 @@ function App() {
         </div>
       </div>}
 
-      {modal==='play'&&<LogPlayModal games={games} campaigns={campaigns} onSave={addPlay} onClose={()=>setModal(null)}/>}
+      {syncing&&<div className="sync-dot" title="Saving…"/>}
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
       {modal==='campaign'&&<AddCampaignModal games={games} onSave={addCampaign} onClose={()=>setModal(null)}/>}
 
