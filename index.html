@@ -2224,6 +2224,7 @@ function App() {
       </div>}
 
       {syncing&&<div className="sync-dot" title="Saving…"/>}
+      {modal==='play'&&<LogPlayModal games={games} campaigns={campaigns} onSave={addPlay} onClose={()=>setModal(null)}/>}
       {modal==='game'&&<AddGameModal onSave={addGame} onClose={()=>setModal(null)}/>}
       {modal==='campaign'&&<AddCampaignModal games={games} onSave={addCampaign} onClose={()=>setModal(null)}/>}
 
